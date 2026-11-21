@@ -1,0 +1,183 @@
+--- a/agent/create-agent/create.js
++++ b/agent/create-agent/create.js
+@@ -7,6 +7,8 @@
+ import { resolveRequiredProviderModel } from "../mcp-shared.js";
+ import { appendTimelineItemIfAgentKnown, emitLiveTimelineItemIfAgentKnown, } from "../timeline-append.js";
+ import { resolveCreateAgentIntent } from "./intent.js";
++import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
++import { assertSlpAgentCreationAllowed } from "../slp-delegation-policy.js";
+ function requireResolvedWorkspaceId(workspaceId) {
+     if (!workspaceId) {
+         throw new Error("createAgentCommand requires a resolved workspaceId");
+@@ -30,9 +32,35 @@
+     return { provider: providerInput, model: undefined };
+ }
+ export async function createAgentCommand(dependencies, input) {
++    const callerAgentId = input.kind === "session" ? getParentAgentIdFromLabels(input.labels) : input.callerAgentId;
++    const requestedProviderModel = input.kind === "session" ? input.config : resolveProviderModel(input.provider);
++    const requested = input.kind === "session" ? input.config : {
++        ...input.config,
++        provider: requestedProviderModel.provider,
++        model: requestedProviderModel.model ?? input.config?.model,
++        thinkingOptionId: input.thinking ?? input.config?.thinkingOptionId,
++    };
++    await assertSlpAgentCreationAllowed({
++        agentManager: dependencies.agentManager,
++        paseoHome: dependencies.paseoHome,
++        callerAgentId,
++        provider: requested.provider,
++        model: requested.model,
++        thinkingOptionId: requested.thinkingOptionId,
++        detached: input.kind === "mcp" && input.detached === true,
++    });
+     const resolved = input.kind === "session"
+         ? await resolveSessionCreateAgent(dependencies, input)
+         : await resolveMcpCreateAgent(dependencies, input);
++    await assertSlpAgentCreationAllowed({
++        agentManager: dependencies.agentManager,
++        paseoHome: dependencies.paseoHome,
++        callerAgentId,
++        provider: resolved.config.provider,
++        model: resolved.config.model,
++        thinkingOptionId: resolved.config.thinkingOptionId,
++        detached: input.kind === "mcp" && input.detached === true,
++    });
+     const snapshot = await dependencies.agentManager.createAgent(resolved.config, input.kind === "session" ? input.agentId : undefined, resolved.createOptions);
+     resolved.setupContinuation?.startAfterAgentCreate({
+         agentId: snapshot.id,
+@@ -359,4 +387,4 @@
+         throw toWorktreeRequestError(error);
+     }
+ }
+-//# sourceMappingURL=create.js.map
+\ No newline at end of file
++//# sourceMappingURL=create.js.map
+--- a/agent/tools/paseo-tools.js
++++ b/agent/tools/paseo-tools.js
+@@ -21,6 +21,7 @@
+ import { createPaseoWorktreeCommand, } from "../../worktree/commands.js";
+ import { registerBrowserTools } from "../../browser-tools/tools.js";
+ import { isPaseoToolEnabled } from "../paseo-tool-policy.js";
++import { assertSlpAgentCreationAllowed } from "../slp-delegation-policy.js";
+ function parseTimestamp(value) {
+     if (!value) {
+         return 0;
+@@ -1050,6 +1051,16 @@
+             guidance: z.string().optional(),
+         },
+     }, async (args) => {
++        const selection = resolveRequiredProviderModel(args.provider);
++        await assertSlpAgentCreationAllowed({
++            agentManager,
++            paseoHome: options.paseoHome,
++            callerAgentId,
++            provider: selection.provider,
++            model: selection.model,
++            thinkingOptionId: args.settings?.thinkingOptionId,
++            detached: args.relationship?.kind === "detached",
++        });
+         const resolvedArgs = await resolveCreateAgentToolArgs(args);
+         const { parsedArgs, worktree } = resolvedArgs;
+         let requestedBackground;
+@@ -2464,4 +2475,4 @@
+         sessionLogger: context.logger,
+     };
+ }
+-//# sourceMappingURL=paseo-tools.js.map
+\ No newline at end of file
++//# sourceMappingURL=paseo-tools.js.map
+--- a/session.js
++++ b/session.js
+@@ -1,4 +1,5 @@
+ import { searchTimeline } from "./agent/chat-search/index.js";
++import { assertSlpAgentCreationAllowed } from "./agent/slp-delegation-policy.js";
+ import { BrowserAutomationHostCapabilitySchema } from "@getpaseo/protocol/browser-automation/capabilities";
+ import { relative } from "node:path";
+ import { isAbsolute } from "node:path";
+@@ -2878,7 +2879,15 @@
+             }, source);
+         }
+     }
+-    createRequestedAgent(request, observer) {
++    async createRequestedAgent(request, observer) {
++        await assertSlpAgentCreationAllowed({
++            agentManager: this.agentManager,
++            paseoHome: this.paseoHome,
++            callerAgentId: request.callerAgentId,
++            provider: request.config.provider,
++            model: request.config.model,
++            thinkingOptionId: request.config.thinkingOptionId,
++        });
+         const { requestId, type: _type, subscribe: _subscribe, idempotencyKey, ...intent } = request;
+         return this.creationService.create({
+             kind: "agent",
+@@ -3079,6 +3088,14 @@
+         let createdWorktreeForCleanup = null;
+         let createdAgentId = null;
+         try {
++            await assertSlpAgentCreationAllowed({
++                agentManager: this.agentManager,
++                paseoHome: this.paseoHome,
++                callerAgentId: msg.callerAgentId,
++                provider: config.provider,
++                model: config.model,
++                thinkingOptionId: config.thinkingOptionId,
++            });
+             const requestedCwd = resolve(config.cwd);
+             const needsRequestedDirectory = Boolean(worktreeName || git || worktree) || (!msg.workspaceId && !msg.callerAgentId);
+             if (needsRequestedDirectory && !(await this.filesystem.isDirectory(requestedCwd))) {
+@@ -6592,4 +6609,4 @@
+             return true;
+     }
+ }
+-//# sourceMappingURL=session.js.map
+\ No newline at end of file
++//# sourceMappingURL=session.js.map
+--- a/agent/slp-delegation-policy.js
++++ b/agent/slp-delegation-policy.js
+@@ -0,0 +1,45 @@
++import { readFile } from "node:fs/promises";
++import { join } from "node:path";
++
++function deny(message) {
++    const error = new Error(`SLP delegation denied: ${message}`);
++    error.code = "slp_delegation_denied";
++    throw error;
++}
++
++// Local SLP admission policy. Each role provider's shipping model catalog is the
++// authority for permitted model/effort pairs; no separate menu is maintained.
++export async function assertSlpAgentCreationAllowed({ agentManager, paseoHome, callerAgentId, provider, model, thinkingOptionId, detached = false }) {
++    let caller = null;
++    if (callerAgentId) {
++        caller = agentManager.getAgent(callerAgentId);
++        if (!caller) deny("caller agent does not exist");
++    }
++    if (caller?.provider === "agy-peer") {
++        deny("a Peer cannot create agents");
++    }
++    if (caller?.provider === "agy-lead") {
++        if (provider !== "agy-peer") deny("a Lead may create only approved Peer providers");
++        if (detached) deny("a Lead must retain ownership of its Peer");
++    }
++    if (!["agy-peer", "agy-lead"].includes(provider)) return;
++    if (typeof model !== "string" || !model || typeof thinkingOptionId !== "string" || !thinkingOptionId) {
++        deny("SLP role creation requires an explicit model and thinkingOptionId");
++    }
++    if (typeof paseoHome !== "string" || !paseoHome) deny("daemon home is unavailable");
++    let config;
++    try {
++        config = JSON.parse(await readFile(join(paseoHome, "config.json"), "utf8"));
++    }
++    catch {
++        deny("the configured role menu cannot be read");
++    }
++    const target = config.agents?.providers?.[provider];
++    if (!target || target.enabled === false || !Array.isArray(target.models)) {
++        deny("the role provider or its configured menu is unavailable");
++    }
++    const choice = target.models.find((entry) => entry.id === model);
++    if (!choice || !Array.isArray(choice.thinkingOptions) || !choice.thinkingOptions.some((option) => option.id === thinkingOptionId)) {
++        deny("model/effort is outside the configured role menu");
++    }
++}

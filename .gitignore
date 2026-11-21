@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+auth.json
+credentials.json
+*.key
+*.pem
+*.log
+__pycache__/
+*.pyc
+.codex-runtime/
+.paseo/
+local/
+backups/

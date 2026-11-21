@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+role="${1:?usage: codex-room <lead|peer|supervisor> [codex arguments...]}"
+shift
+room_bin="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+"${room_bin}/codex-room-sync" "$role"
+export CODEX_HOME="${HOME}/.codex-runtime/${role}"
+codex_bin="${CODEX_BIN:-$(command -v codex)}"
+exec "$codex_bin" "$@"

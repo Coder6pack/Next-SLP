@@ -1,0 +1,311 @@
+{
+  "version": 1,
+  "daemon": {
+    "mcp": {
+      "enabled": true,
+      "injectIntoAgents": true
+    },
+    "browserTools": {
+      "enabled": false
+    }
+  },
+  "agents": {
+    "providers": {
+      "codex-supervisor": {
+        "extends": "codex",
+        "label": "Codex Supervisor",
+        "description": "Cross-workspace workflow, coordination, and operational oversight",
+        "command": [
+          "__SLP_HOME__/.local/bin/codex-room",
+          "supervisor"
+        ],
+        "env": {
+          "CODEX_BIN": "__SLP_HOME__/.local/bin/codex"
+        },
+        "models": [
+          {
+            "id": "gpt-6.1-sol",
+            "label": "GPT-6.1-Sol",
+            "isDefault": true,
+            "thinkingOptions": [
+              {
+                "id": "low",
+                "label": "Low",
+                "isDefault": false
+              },
+              {
+                "id": "medium",
+                "label": "Medium",
+                "isDefault": true
+              },
+              {
+                "id": "high",
+                "label": "High",
+                "isDefault": false
+              },
+              {
+                "id": "xhigh",
+                "label": "XHigh",
+                "isDefault": false
+              },
+              {
+                "id": "max",
+                "label": "Max",
+                "isDefault": false
+              },
+              {
+                "id": "ultra",
+                "label": "Ultra",
+                "isDefault": false
+              }
+            ]
+          },
+          {
+            "id": "gpt-6-astra",
+            "label": "GPT-6-Astra",
+            "isDefault": false,
+            "thinkingOptions": [
+              {
+                "id": "low",
+                "label": "Low",
+                "isDefault": false
+              },
+              {
+                "id": "medium",
+                "label": "Medium",
+                "isDefault": true
+              },
+              {
+                "id": "high",
+                "label": "High",
+                "isDefault": false
+              },
+              {
+                "id": "xhigh",
+                "label": "XHigh",
+                "isDefault": false
+              },
+              {
+                "id": "max",
+                "label": "Max",
+                "isDefault": false
+              },
+              {
+                "id": "ultra",
+                "label": "Ultra",
+                "isDefault": false
+              }
+            ]
+          }
+        ],
+        "paseoTools": {
+          "disabledTools": [
+            "list_workspace_scripts",
+            "start_workspace_script",
+            "stop_workspace_script",
+            "list_terminals",
+            "create_terminal",
+            "kill_terminal",
+            "capture_terminal",
+            "send_terminal_keys",
+            "speak",
+            "create_schedule",
+            "list_schedules",
+            "inspect_schedule",
+            "pause_schedule",
+            "resume_schedule",
+            "update_schedule",
+            "schedule_logs",
+            "run_schedule_once",
+            "delete_schedule",
+            "create_heartbeat",
+            "delete_heartbeat"
+          ]
+        }
+      },
+      "agy-supervisor": {
+        "extends": "acp",
+        "label": "Antigravity Supervisor",
+        "description": "SLP governance, architecture, safety, and cross-workspace coordination",
+        "command": [
+          "__SLP_HOME__/.local/bin/agy",
+          "acp",
+          "--agent",
+          "slp-supervisor",
+          "--dangerously-skip-permissions",
+          "--process-per-session"
+        ],
+        "models": [
+          {
+            "id": "gemini-4-neon",
+            "label": "Gemini 4 Neon",
+            "isDefault": true,
+            "thinkingOptions": [
+              {
+                "id": "low",
+                "label": "Low"
+              },
+              {
+                "id": "medium",
+                "label": "Medium",
+                "isDefault": true
+              },
+              {
+                "id": "high",
+                "label": "High"
+              }
+            ]
+          }
+        ],
+        "paseoTools": {
+          "disabledTools": [
+            "list_workspace_scripts",
+            "start_workspace_script",
+            "stop_workspace_script",
+            "list_terminals",
+            "create_terminal",
+            "kill_terminal",
+            "capture_terminal",
+            "send_terminal_keys",
+            "speak",
+            "create_schedule",
+            "list_schedules",
+            "inspect_schedule",
+            "pause_schedule",
+            "resume_schedule",
+            "update_schedule",
+            "schedule_logs",
+            "run_schedule_once",
+            "delete_schedule",
+            "create_heartbeat",
+            "delete_heartbeat"
+          ]
+        }
+      },
+      "agy-lead": {
+        "extends": "acp",
+        "label": "Antigravity Lead",
+        "description": "SLP lane planning, briefs, technical judgement, integration, and Peer coordination",
+        "command": [
+          "__SLP_HOME__/.local/bin/agy",
+          "acp",
+          "--agent",
+          "slp-lead",
+          "--dangerously-skip-permissions",
+          "--process-per-session"
+        ],
+        "models": [
+          {
+            "id": "gemini-4-neon",
+            "label": "Gemini 4 Neon",
+            "isDefault": true,
+            "thinkingOptions": [
+              {
+                "id": "high",
+                "label": "High",
+                "isDefault": true
+              }
+            ]
+          }
+        ],
+        "paseoTools": {
+          "disabledTools": [
+            "create_workspace",
+            "rename_workspace",
+            "archive_workspace",
+            "list_workspace_scripts",
+            "start_workspace_script",
+            "stop_workspace_script",
+            "list_terminals",
+            "create_terminal",
+            "kill_terminal",
+            "capture_terminal",
+            "send_terminal_keys",
+            "speak",
+            "create_schedule",
+            "list_schedules",
+            "inspect_schedule",
+            "pause_schedule",
+            "resume_schedule",
+            "update_schedule",
+            "schedule_logs",
+            "run_schedule_once",
+            "delete_schedule",
+            "create_heartbeat",
+            "delete_heartbeat"
+          ]
+        }
+      },
+      "agy-peer": {
+        "extends": "acp",
+        "label": "Antigravity Peer",
+        "description": "SLP scoped implementation, investigation, and independent review",
+        "command": [
+          "__SLP_HOME__/.local/bin/agy",
+          "acp",
+          "--agent",
+          "slp-peer",
+          "--dangerously-skip-permissions",
+          "--process-per-session"
+        ],
+        "models": [
+          {
+            "id": "gemini-4-neon",
+            "label": "Gemini 4 Neon",
+            "isDefault": true,
+            "thinkingOptions": [
+              {
+                "id": "high",
+                "label": "High",
+                "isDefault": true
+              },
+              {
+                "id": "xhigh",
+                "label": "XHigh"
+              }
+            ]
+          },
+          {
+            "id": "gemini-4-hydrogen",
+            "label": "Gemini 4 Hydrogen",
+            "thinkingOptions": [
+              {
+                "id": "high",
+                "label": "High",
+                "isDefault": true
+              },
+              {
+                "id": "xhigh",
+                "label": "XHigh",
+                "isDefault": false
+              }
+            ]
+          }
+        ],
+        "paseoTools": {
+          "disabledTools": [
+            "create_workspace",
+            "rename_workspace",
+            "archive_workspace",
+            "list_workspace_scripts",
+            "start_workspace_script",
+            "stop_workspace_script",
+            "speak",
+            "create_schedule",
+            "list_schedules",
+            "inspect_schedule",
+            "pause_schedule",
+            "resume_schedule",
+            "update_schedule",
+            "schedule_logs",
+            "run_schedule_once",
+            "delete_schedule",
+            "create_heartbeat",
+            "delete_heartbeat",
+            "create_agent"
+          ]
+        }
+      }
+    }
+  }
+}
