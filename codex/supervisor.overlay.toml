@@ -1,0 +1,9 @@
+# Shared defaults come from ~/.codex/config.toml.
+# `developer_instructions` is injected from prompts/supervisor.md by scripts/slp.py build.
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+model_auto_compact_token_limit = 300000
+
+[mcp_servers.paseo-projects]
+command = "__SLP_NODE_BIN__"
+args = ["__SLP_HOME__/.local/share/slp/paseo-projects.mjs"]

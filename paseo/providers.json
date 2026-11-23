@@ -20,7 +20,7 @@
           "supervisor"
         ],
         "env": {
-          "CODEX_BIN": "__SLP_HOME__/.local/bin/codex"
+          "CODEX_BIN": "__SLP_CODEX_BIN__"
         },
         "models": [
           {

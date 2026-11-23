@@ -14,7 +14,7 @@ Each name is a one-line command the Lead/Supervisor can use directly
 | **Priority-by-label** | Ordering work purely by P0/P1/P2, ignoring dependency/leverage | Reconcile by dependency, foundation, absorption |
 | **Dissent-theater** | A peer manufactures disagreement / finding counts to look valuable | "Endorse the incumbent when it remains strongest" |
 | **Frozen-wait mismatch** | Lead waits for `idle`, worker reports `done` | Unified state contract; done = collect results |
-| **Protocol leak** | Peers learn orchestration mechanics and start self-coordinating | Coordination instructions live only in Supervisor/Lead profiles; MCP injected into lead/supervisor only |
+| **Protocol leak** | Peers learn orchestration mechanics and start self-coordinating | Coordination docs live under `shared/supervisor/` and `shared/lead/` only; Peer prompt never links them; Peer `create_agent` disabled |
 | **Ceremony capture** | Every task gets a council, votes, reports; process outweighs evidence | Smallest useful topology; council only for decision-changing, genuinely independent propositions |
 | **Forked independence** | A "reviewer" forked from the Lead inherits its framing and bias | Fresh session, neutral brief, exact candidate — never a fork |
 | **Over-compression** | Core instructions compressed into lossy images/summaries | Exact rules and facts always stay as text |

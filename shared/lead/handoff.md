@@ -1,17 +1,18 @@
 # Handoff — moving state and authority to a successor owner or context
 
-> Read by the Lead (owner transitions inside its project) and by the
-> Supervisor (Lead replacement under a human mandate). Peers never read
-> this file; a Peer only ever produces a handback (`handback.md`).
+> Read by the Lead (owner transitions inside its lane) and by the Supervisor
+> (Lead replacement under a Human mandate). Peers do not read this file; a Peer
+> returns its handback directly in its final message unless Lead explicitly
+> requests a file path.
 > Agents produce the packet themselves — there is no skill for it.
 
 ## Vocabulary
 
-- **Handback** — a Peer returns its lease to the Lead with evidence
-  (`handback.md`). Upward. Ends an assignment.
+- **Handback** — a Peer returns its lease to the Lead with evidence in its final
+  message. Upward. Ends an assignment.
 - **Handoff** — structured transfer of state *and* authority to a new
   owner or a fresh context. Sideways, to a successor. The authority to
-  replace a Lead comes from the human; the packet goes to the successor.
+  replace a Lead comes from the Human; the packet goes to the successor.
 
 ## Compact, branch, or hand off?
 
@@ -85,7 +86,7 @@ Writes re-enabled at:
 ```
 
 The receipt is the one durable operational record: the Supervisor appends it to
-`__SLP_HOME__/shared/supervisor_notebook.md`, or to the project's issue tracker
+`__SLP_HOME__/shared/supervisor/supervisor_notebook.md`, or to the project's issue tracker
 when the workspace protocol designates that tracker. In the latter case, append
 the operational lesson and a receipt reference to the shared notebook rather
 than duplicating tracker state. Do not create a separate per-workspace notebook.

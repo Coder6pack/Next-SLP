@@ -1,10 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-role="${1:?usage: codex-room <lead|peer|supervisor> [codex arguments...]}"
+role="${1:?usage: codex-room <supervisor|lead|peer> [codex arguments...]}"
 shift
+
 room_bin="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-"${room_bin}/codex-room-sync" "$role"
-export CODEX_HOME="${HOME}/.codex-runtime/${role}"
-codex_bin="${CODEX_BIN:-$(command -v codex)}"
+self_real="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "${BASH_SOURCE[0]}")"
+
+# Isolate runtime home per role + Paseo agent instance so concurrent Codex seats
+# never overwrite each other's config.toml or callerAgentId.
+raw_instance="${PASEO_AGENT_ID:-default}"
+instance_id="$(printf '%s' "$raw_instance" | tr -cd 'A-Za-z0-9._-')"
+if [[ -z "$instance_id" ]]; then
+  instance_id="default"
+fi
+
+runtime_dir="${HOME}/.codex-runtime/${role}/${instance_id}"
+"${room_bin}/codex-room-sync" "$role" "$runtime_dir"
+export CODEX_HOME="$runtime_dir"
+
+codex_bin=""
+if [[ -n "${CODEX_BIN:-}" && -x "${CODEX_BIN}" ]]; then
+  codex_bin="$CODEX_BIN"
+elif command -v codex >/dev/null 2>&1; then
+  codex_bin="$(command -v codex)"
+elif [[ -x "${HOME}/.local/bin/codex" ]]; then
+  codex_bin="${HOME}/.local/bin/codex"
+else
+  echo "codex-room: unable to locate executable codex binary (set CODEX_BIN or add codex to PATH)" >&2
+  exit 127
+fi
+
+codex_real="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$codex_bin")"
+if [[ "$codex_real" == "$self_real" ]]; then
+  echo "codex-room: CODEX_BIN resolves to codex-room itself ($codex_bin); refusing recursive exec" >&2
+  exit 2
+fi
+
 exec "$codex_bin" "$@"

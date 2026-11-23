@@ -49,33 +49,27 @@ an issue that was never read is `UNKNOWN`, not open or closed.
 
 ## Task classes
 
-### Tiny / bounded
+### Tiny (1–2 files, bounded, low risk)
 
-- one Engineer with a thin brief (the Lead never implements)
-- targeted verification; Lead counter-review on handback
-- independent Reviewer optional
+- no separate protocol ceremony required; constraints live in the brief
+- one Peer implementer; targeted verification; Lead verifies directly on handback
+- independent Reviewer optional; learning note skipped unless requested
 
-### Cross-module / lifecycle-sensitive
+### Standard (cross-module / feature / non-trivial bugfix)
 
-- one read-only Architect before implementation
-- one Engineer with isolated write scope
-- one independent Reviewer on a stable candidate
+- Lead splits non-overlapping scopes across Peer(s); read-only Architect when boundaries are unclear
+- one independent Reviewer on a stable candidate when material uncertainty exists
+- concise Vietnamese learning note (5 headings) per `shared/guides/learning-documents.md`
 
-### Architecture lock-in
+### High-risk / Architecture lock-in
 
+- Human-approved `workspace-protocol.md` required before delegating affected work
 - sealed Architect and Reviewer mandates ("dual design / dual review":
   two independent seats across approved models, one frozen candidate,
-  distinct mandates, only when the Human-approved workspace protocol requires it)
-- review runs three lanes: the two dual-review seats plus one OCR
-  delegation lane on the same frozen candidate; the OCR lane produces
-  rule-based evidence and never replaces the macro
-  (architectural/lifecycle) review lanes
-  - if this additional lane is approved, select its provider/model/effort
-    from the current configured role menu; if no permitted route can fulfill
-    it, resolve the gap with the Human instead of inventing a route
+  distinct mandates, when required by the approved protocol)
 - compare alternatives and reversal conditions
-- Lead issues one binding project verdict
-- Human decides irreversible product/cost trade-offs
+- Lead issues one binding technical verdict; Human decides irreversible product/cost trade-offs
+- thorough Vietnamese learning note documenting tradeoffs and reversal risks
 
 ## Ownership and workspaces
 
@@ -170,7 +164,7 @@ an issue that was never read is `UNKNOWN`, not open or closed.
 - Human and Supervisor discuss changes; Supervisor drafts governance updates
 - Lead and Peer raise conflicts and proposals through their assigned owner
 - Supervisor appends operational failures, causal evidence, and lessons to
-  `__SLP_HOME__/shared/supervisor_notebook.md`; keep project decisions and task
+  `__SLP_HOME__/shared/supervisor/supervisor_notebook.md`; keep project decisions and task
   state in the workspace's existing designated records
 - Human approves material authority changes
 - preserve version history
