@@ -119,4 +119,60 @@ describe("slp-guard PreToolUse hook", () => {
       "allow"
     );
   });
+
+  it("enforces SLP_LOCKED_FILES for Peer and Lead across file tools and shell writes", () => {
+    const env = {
+      ...BASE_ENV,
+      SLP_ROLE: "peer",
+      SLP_LOCKED_FILES: "Spec.lean, tests/contract.test.ts, formal/specs",
+    };
+    const cwd = "/opt/example-home/dev/app";
+
+    // Blocked edits: bare filename anywhere, relative file path, and file inside locked dir.
+    for (const target of [
+      "/opt/example-home/dev/app/formal/Spec.lean",
+      "tests/contract.test.ts",
+      "/opt/example-home/dev/app/formal/specs/Invariants.lean",
+    ]) {
+      assert.equal(
+        evaluatePreToolUse({ cwd, toolCall: { name: "edit_file", args: { Path: target } } }, env).decision,
+        "deny",
+        `expected deny editing ${target}`
+      );
+      assert.equal(
+        evaluatePreToolUse({ cwd, toolCall: { name: "write_file", args: { Path: target } } }, env).decision,
+        "deny",
+        `expected deny writing ${target}`
+      );
+    }
+
+    // Blocked shell writes targeting locked paths.
+    for (const cmd of [
+      "echo 'axiom hack : False' >> formal/Spec.lean",
+      "sed -i '' 's/old/new/' tests/contract.test.ts",
+      "rm -f formal/specs/Invariants.lean",
+    ]) {
+      assert.equal(
+        evaluatePreToolUse({ cwd, toolCall: { name: "run_command", args: { CommandLine: cmd } } }, env).decision,
+        "deny",
+        `expected deny shell cmd: ${cmd}`
+      );
+    }
+
+    // Allowed: reading/building locked specs and editing unlocked implementation/proof files.
+    for (const safeCmd of ["cat formal/Spec.lean", "lake build", "npm test", "cat < formal/Spec.lean"]) {
+      assert.equal(
+        evaluatePreToolUse({ cwd, toolCall: { name: "run_command", args: { CommandLine: safeCmd } } }, env).decision,
+        "allow",
+        `expected allow shell cmd: ${safeCmd}`
+      );
+    }
+    assert.equal(
+      evaluatePreToolUse(
+        { cwd, toolCall: { name: "edit_file", args: { Path: "/opt/example-home/dev/app/formal/Proof.lean" } } },
+        env
+      ).decision,
+      "allow"
+    );
+  });
 });

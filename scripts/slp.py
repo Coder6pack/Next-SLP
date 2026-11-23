@@ -55,6 +55,7 @@ FORBIDDEN_PEER_REFS = (
     "audit.md",
     "catalog.md",
     "structural-antipatterns.md",
+    "formal-verification.md",
 )
 
 PROVIDER_MODEL_REF_RE = re.compile(

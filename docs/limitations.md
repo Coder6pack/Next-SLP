@@ -9,11 +9,11 @@
 - **Operational guardrails, not an OS sandbox:** The server admission policy
   gates all Paseo agent-creation entry points, and
   `antigravity/hooks/slp-guard.mjs` (`PreToolUse`) hard-blocks native
-  subagents/swarms/workflows, writes under `~/shared`, and unattended
-  `git push` when `SLP_ROLE` is set. However, seats still run with
-  `--dangerously-skip-permissions` / `danger-full-access`, so these controls
-  prevent coordination drift and accidental violations rather than isolating
-  hostile code like an OS container/sandbox.
+  subagents/swarms/workflows, writes under `~/shared`, edits to files listed in
+  `SLP_LOCKED_FILES`, and unattended `git push` when `SLP_ROLE` is set. However,
+  seats still run with `--dangerously-skip-permissions` / `danger-full-access`,
+  so these controls prevent coordination drift and accidental violations rather
+  than isolating hostile code like an OS container/sandbox.
 - **300,000-token auto-compact limit:** Enforced explicitly only for
   `codex-supervisor`; actual model context windows remain the hard ceiling.
   Antigravity seats rely on prompt context-hygiene guidance and runtime

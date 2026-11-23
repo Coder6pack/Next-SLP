@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const VALID_ROLES = new Set(["supervisor", "lead", "peer"]);
@@ -19,6 +19,8 @@ const GH_EXTERNAL_MUTATION_RE =
   /(?:^|[;&|()]\s*|\s)gh\s+(?:pr\s+merge|release\s+create|repo\s+delete)(?:\s|$)/i;
 const SHELL_MUTATION_RE =
   /(?:^|[;&|()]\s*|\s)(?:rm|mv|cp|tee|truncate|chmod|chown)\b|sed\s+-i|(?<!>)>(?!>)/i;
+const SHELL_ANY_WRITE_RE =
+  /(?:^|[;&|()]\s*|\s)(?:rm|mv|cp|tee|truncate|chmod|chown)\b|(?:sed|perl)\s+-i|>>?/i;
 
 function safeRealpath(targetPath) {
   try {
@@ -37,6 +39,43 @@ function expandHome(rawPath, homeDir) {
   if (rawPath === "~") return homeDir;
   if (rawPath.startsWith("~/")) return join(homeDir, rawPath.slice(2));
   return rawPath;
+}
+
+function parseLockedEntries(rawLocked, cwd, homeDir) {
+  if (typeof rawLocked !== "string" || !rawLocked.trim()) {
+    return [];
+  }
+  return rawLocked
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((raw) => {
+      const expanded = expandHome(raw, homeDir);
+      const isBareName = !raw.includes("/") && !raw.includes("\\");
+      const resolved = safeRealpath(isAbsolute(expanded) ? expanded : resolve(cwd, expanded));
+      return { raw, isBareName, resolved };
+    });
+}
+
+function findLockedMatch(resolvedTarget, lockedEntries) {
+  for (const entry of lockedEntries) {
+    if (isInsideDir(resolvedTarget, entry.resolved)) {
+      return entry;
+    }
+    if (entry.isBareName && basename(resolvedTarget) === entry.raw) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+function cmdMentionsLocked(cmd, lockedEntries) {
+  for (const entry of lockedEntries) {
+    if (cmd.includes(entry.resolved) || cmd.includes(entry.raw)) {
+      return entry;
+    }
+  }
+  return null;
 }
 
 function deny(reason) {
@@ -58,8 +97,13 @@ export function evaluatePreToolUse(payload, env = process.env) {
     ? payload.toolCall.args
     : {};
   const homeDir = resolve(env.HOME || homedir());
+  const cwd = typeof payload?.cwd === "string" && payload.cwd ? payload.cwd : process.cwd();
   const sharedDir = safeRealpath(env.SLP_SHARED_DIR || join(homeDir, "shared"));
   const notebookPath = resolve(sharedDir, "supervisor", "supervisor_notebook.md");
+  const lockedEntries =
+    role === "peer" || role === "lead"
+      ? parseLockedEntries(env.SLP_LOCKED_FILES, cwd, homeDir)
+      : [];
 
   // 1. Block native orchestration bypasses for Peer and Lead.
   if ((role === "peer" || role === "lead") && NATIVE_ORCHESTRATION_TOOLS.has(toolName)) {
@@ -73,12 +117,11 @@ export function evaluatePreToolUse(payload, env = process.env) {
     );
   }
 
-  // 2. Enforce ~/shared read-only boundary (append-only notebook exception for Supervisor).
+  // 2. Enforce ~/shared read-only boundary and SLP_LOCKED_FILES spec/test locks.
   if (FILE_MUTATION_TOOLS.has(toolName)) {
     const rawTarget = args.Path ?? args.path ?? args.TargetFile ?? args.file_path ?? "";
     if (typeof rawTarget === "string" && rawTarget.trim()) {
       const expanded = expandHome(rawTarget.trim(), homeDir);
-      const cwd = typeof payload?.cwd === "string" && payload.cwd ? payload.cwd : process.cwd();
       const resolvedTarget = safeRealpath(isAbsolute(expanded) ? expanded : resolve(cwd, expanded));
       if (isInsideDir(resolvedTarget, sharedDir)) {
         if (role === "supervisor" && resolvedTarget === notebookPath) {
@@ -93,10 +136,17 @@ export function evaluatePreToolUse(payload, env = process.env) {
           `SLP guard (${role}): '${resolvedTarget}' is under read-only SLP shared directory '${sharedDir}'.`
         );
       }
+
+      const lockedMatch = findLockedMatch(resolvedTarget, lockedEntries);
+      if (lockedMatch) {
+        return deny(
+          `SLP guard (${role}): '${resolvedTarget}' is locked by SLP_LOCKED_FILES ('${lockedMatch.raw}') and cannot be modified.`
+        );
+      }
     }
   }
 
-  // 3. Enforce external-action & ~/shared shell boundaries for run_command.
+  // 3. Enforce external-action, ~/shared, and SLP_LOCKED_FILES shell boundaries for run_command.
   if (toolName === "run_command") {
     const cmd = String(args.CommandLine ?? args.command ?? "");
     const allowExternal = env.SLP_ALLOW_EXTERNAL_ACTIONS === "1";
@@ -119,6 +169,13 @@ export function evaluatePreToolUse(payload, env = process.env) {
     if (mentionsShared && SHELL_MUTATION_RE.test(cmd)) {
       return deny(
         `SLP guard (${role}): shell mutation targeting '${sharedDir}' is blocked.`
+      );
+    }
+
+    const lockedCmdMatch = cmdMentionsLocked(cmd, lockedEntries);
+    if (lockedCmdMatch && SHELL_ANY_WRITE_RE.test(cmd)) {
+      return deny(
+        `SLP guard (${role}): shell mutation targeting locked path '${lockedCmdMatch.raw}' (SLP_LOCKED_FILES) is blocked.`
       );
     }
   }

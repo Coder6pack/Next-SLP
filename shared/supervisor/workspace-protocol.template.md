@@ -139,6 +139,8 @@ an issue that was never read is `UNKNOWN`, not open or closed.
 - candidate identity requirements
 - independent-review triggers
 - subjective evidence requirements
+- locked contract/spec files (`SLP_LOCKED_FILES`, optional): paths Peers must not modify during implementation (e.g. `tests/contract.test.ts`, `formal/Spec.lean`)
+- formal verification (optional, `high-risk` cores only): `<none | lean4>` — when `lean4`, follow `shared/lead/formal-verification.md` (locked `Spec.lean`, `lake build`, zero `sorry`, `#print axioms` audit, and differential test against production code)
 
 ## Project-specific anti-patterns
 
