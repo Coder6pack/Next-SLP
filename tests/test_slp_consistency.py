@@ -4,10 +4,12 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 import unittest
 
@@ -30,7 +32,7 @@ class SlpConsistencyTests(unittest.TestCase):
         errors = slp.collect_verification_errors(REPO_ROOT)
         self.assertEqual(errors, [])
 
-    def test_render_bundle_resolves_all_placeholders(self):
+    def test_render_bundle_resolves_all_placeholders_and_includes_hooks_and_mcp(self):
         with tempfile.TemporaryDirectory() as tmp:
             out_dir = Path(tmp) / "bundle"
             proc = subprocess.run(
@@ -63,16 +65,76 @@ class SlpConsistencyTests(unittest.TestCase):
                 providers["agents"]["providers"]["codex-supervisor"]["env"]["CODEX_BIN"],
                 "/usr/local/bin/codex",
             )
+            self.assertEqual(
+                providers["agents"]["providers"]["agy-peer"]["paseoTools"]["enabled"],
+                False,
+            )
             codex_toml = tomllib.loads((out_dir / "codex" / "supervisor.config.toml").read_text(encoding="utf-8"))
             self.assertEqual(codex_toml["mcp_servers"]["paseo-projects"]["command"], "/usr/local/bin/node")
             self.assertEqual(
                 codex_toml["mcp_servers"]["paseo-projects"]["args"],
                 ["/opt/example-home/.local/share/slp/paseo-projects.mjs"],
             )
+            hooks = json.loads((out_dir / "antigravity" / "hooks.json").read_text(encoding="utf-8"))
+            self.assertIn("slp-role-guard", hooks)
+            mcp = json.loads((out_dir / "antigravity" / "mcp_config.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                mcp["mcpServers"]["paseo-projects"]["args"],
+                ["/opt/example-home/.local/share/slp/paseo-projects.mjs"],
+            )
             self.assertTrue((out_dir / "bin" / "codex-room").stat().st_mode & stat.S_IXUSR)
             self.assertTrue((out_dir / "bin" / "codex-room-sync").stat().st_mode & stat.S_IXUSR)
+            self.assertTrue((out_dir / "share" / "slp" / "slp-guard.mjs").stat().st_mode & stat.S_IXUSR)
 
-    def test_codex_room_sync_concurrent_isolation_and_precedence(self):
+    def test_check_live_reports_match_when_installed_matches_bundle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_home = Path(tmp) / "home"
+            bundle = Path(tmp) / "bundle"
+            slp.build_bundle(
+                bundle,
+                home_dir=str(fake_home.resolve()),
+                node_bin="/usr/local/bin/node",
+                codex_bin="/usr/local/bin/codex",
+                repo_root=REPO_ROOT,
+            )
+
+            # Simulate installing the rendered bundle into fake_home.
+            install_map = [
+                ("codex/supervisor.config.toml", fake_home / ".codex" / "supervisor.config.toml"),
+                ("bin/codex-room", fake_home / ".local" / "bin" / "codex-room"),
+                ("bin/codex-room-sync", fake_home / ".local" / "bin" / "codex-room-sync"),
+                ("share/slp/paseo-projects.mjs", fake_home / ".local" / "share" / "slp" / "paseo-projects.mjs"),
+                ("share/slp/slp-guard.mjs", fake_home / ".local" / "share" / "slp" / "slp-guard.mjs"),
+                ("antigravity/agents/slp-supervisor.md", fake_home / ".gemini" / "config" / "agents" / "slp-supervisor.md"),
+                ("antigravity/agents/slp-lead.md", fake_home / ".gemini" / "config" / "agents" / "slp-lead.md"),
+                ("antigravity/agents/slp-peer.md", fake_home / ".gemini" / "config" / "agents" / "slp-peer.md"),
+                ("paseo/providers.json", fake_home / ".paseo" / "config.json"),
+                ("antigravity/hooks.json", fake_home / ".gemini" / "config" / "hooks.json"),
+                ("antigravity/mcp_config.json", fake_home / ".gemini" / "config" / "mcp_config.json"),
+            ]
+            for src_rel, dst in install_map:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(bundle / src_rel, dst)
+
+            rows = slp.collect_live_drift(
+                fake_home,
+                node_bin="/usr/local/bin/node",
+                codex_bin="/usr/local/bin/codex",
+                repo_root=REPO_ROOT,
+            )
+            self.assertTrue(all(status == "MATCH" for status, _ in rows), msg=rows)
+
+            # Introducing drift in one file is immediately flagged.
+            (fake_home / ".gemini" / "config" / "agents" / "slp-peer.md").write_text("stale", encoding="utf-8")
+            rows_after = slp.collect_live_drift(
+                fake_home,
+                node_bin="/usr/local/bin/node",
+                codex_bin="/usr/local/bin/codex",
+                repo_root=REPO_ROOT,
+            )
+            self.assertTrue(any(status == "DRIFT" and "slp-peer.md" in target for status, target in rows_after))
+
+    def test_codex_room_sync_concurrent_isolation_precedence_and_stale_prune(self):
         sync = load_codex_room_sync()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -93,8 +155,19 @@ class SlpConsistencyTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            rt1 = root / "runtime" / "sup-1"
-            rt2 = root / "runtime" / "sup-2"
+            role_root = root / "runtime"
+            rt1 = role_root / "sup-1"
+            rt2 = role_root / "sup-2"
+            stale = role_root / "sup-old"
+            default_rt = role_root / "default"
+            stale.mkdir(parents=True)
+            default_rt.mkdir(parents=True)
+            old_ts = time.time() - (30 * 86400)
+            (stale / "config.toml").write_text("", encoding="utf-8")
+            (default_rt / "config.toml").write_text("", encoding="utf-8")
+            os.utime(stale / "config.toml", (old_ts, old_ts))
+            os.utime(default_rt / "config.toml", (old_ts, old_ts))
+
             cfg1 = tomllib.loads(
                 sync.sync_role("supervisor", canonical=canonical, runtime=rt1, agent_id="agent-one").read_text(
                     encoding="utf-8"
@@ -108,18 +181,20 @@ class SlpConsistencyTests(unittest.TestCase):
 
             self.assertIn("callerAgentId=agent-one", cfg1["mcp_servers"]["paseo"]["url"])
             self.assertIn("callerAgentId=agent-two", cfg2["mcp_servers"]["paseo"]["url"])
-            # Ensure agent-two did not overwrite agent-one's config.
             cfg1_again = tomllib.loads((rt1 / "config.toml").read_text(encoding="utf-8"))
             self.assertIn("callerAgentId=agent-one", cfg1_again["mcp_servers"]["paseo"]["url"])
-            # External host is never mutated.
             self.assertEqual(cfg1["mcp_servers"]["external"]["url"], "https://example.com/mcp/agents")
-            # Overlay instructions precede baseline instructions.
             instr = cfg1["developer_instructions"]
             self.assertLess(
                 instr.index("SLP Supervisor authoritative instructions."),
                 instr.index("Personal baseline preference."),
             )
             self.assertTrue((rt1 / "auth.json").is_symlink())
+            # Stale instance was pruned, while default & active instances remain.
+            self.assertFalse(stale.exists())
+            self.assertTrue(default_rt.exists())
+            self.assertTrue(rt1.exists())
+            self.assertTrue(rt2.exists())
 
     def test_codex_room_blocks_recursive_codex_bin(self):
         with tempfile.TemporaryDirectory() as tmp:

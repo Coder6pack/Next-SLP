@@ -1,0 +1,122 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+
+import { evaluatePreToolUse } from "../antigravity/hooks/slp-guard.mjs";
+
+const BASE_ENV = { HOME: "/opt/example-home" };
+
+describe("slp-guard PreToolUse hook", () => {
+  it("is a no-op when SLP_ROLE is unset (normal Antigravity sessions)", () => {
+    const res = evaluatePreToolUse(
+      { toolCall: { name: "invoke_subagent", args: { TypeName: "research" } } },
+      BASE_ENV
+    );
+    assert.equal(res.decision, "allow");
+  });
+
+  it("blocks native subagent, swarm, and workflow tools for Peer and Lead", () => {
+    for (const role of ["peer", "lead"]) {
+      for (const tool of ["invoke_subagent", "define_subagent", "swarm", "run_workflow"]) {
+        const res = evaluatePreToolUse(
+          { toolCall: { name: tool, args: {} } },
+          { ...BASE_ENV, SLP_ROLE: role }
+        );
+        assert.equal(res.decision, "deny", `${role} must be blocked from ${tool}`);
+      }
+    }
+  });
+
+  it("protects ~/shared from edits by Peer, Lead, and Supervisor (except notebook append)", () => {
+    const sharedFile = "/opt/example-home/shared/lead/handoff.md";
+    const notebook = "/opt/example-home/shared/supervisor/supervisor_notebook.md";
+
+    for (const role of ["peer", "lead", "supervisor"]) {
+      const res = evaluatePreToolUse(
+        { toolCall: { name: "edit_file", args: { Path: sharedFile } } },
+        { ...BASE_ENV, SLP_ROLE: role }
+      );
+      assert.equal(res.decision, "deny");
+    }
+
+    // Supervisor can append to supervisor_notebook.md, but cannot overwrite or edit prior entries.
+    assert.equal(
+      evaluatePreToolUse(
+        { toolCall: { name: "write_file", args: { Path: notebook, Append: true } } },
+        { ...BASE_ENV, SLP_ROLE: "supervisor" }
+      ).decision,
+      "allow"
+    );
+    assert.equal(
+      evaluatePreToolUse(
+        { toolCall: { name: "write_file", args: { Path: notebook, Overwrite: true } } },
+        { ...BASE_ENV, SLP_ROLE: "supervisor" }
+      ).decision,
+      "deny"
+    );
+    assert.equal(
+      evaluatePreToolUse(
+        { toolCall: { name: "edit_file", args: { Path: notebook } } },
+        { ...BASE_ENV, SLP_ROLE: "supervisor" }
+      ).decision,
+      "deny"
+    );
+
+    // Peer cannot even append to supervisor_notebook.md.
+    assert.equal(
+      evaluatePreToolUse(
+        { toolCall: { name: "write_file", args: { Path: notebook, Append: true } } },
+        { ...BASE_ENV, SLP_ROLE: "peer" }
+      ).decision,
+      "deny"
+    );
+
+    // Normal repo edits are allowed.
+    assert.equal(
+      evaluatePreToolUse(
+        { toolCall: { name: "edit_file", args: { Path: "/opt/example-home/dev/app/index.ts" } } },
+        { ...BASE_ENV, SLP_ROLE: "peer" }
+      ).decision,
+      "allow"
+    );
+  });
+
+  it("blocks unattended git push and gh merge/release mutations unless explicitly overridden", () => {
+    for (const cmd of [
+      "git push origin main",
+      "git -C /repo push --force-with-lease",
+      "gh pr merge 42 --squash",
+      "gh release create v1.0.0",
+      "rm -rf ~/shared/lead",
+    ]) {
+      assert.equal(
+        evaluatePreToolUse(
+          { toolCall: { name: "run_command", args: { CommandLine: cmd } } },
+          { ...BASE_ENV, SLP_ROLE: "lead" }
+        ).decision,
+        "deny",
+        `expected deny for: ${cmd}`
+      );
+    }
+
+    // Read-only git and local tests remain allowed.
+    for (const safeCmd of ["git status", "git commit -m 'feat'", "npm test", "cat ~/shared/lead/handoff.md"]) {
+      assert.equal(
+        evaluatePreToolUse(
+          { toolCall: { name: "run_command", args: { CommandLine: safeCmd } } },
+          { ...BASE_ENV, SLP_ROLE: "peer" }
+        ).decision,
+        "allow",
+        `expected allow for: ${safeCmd}`
+      );
+    }
+
+    // Explicit Human override permits git push.
+    assert.equal(
+      evaluatePreToolUse(
+        { toolCall: { name: "run_command", args: { CommandLine: "git push origin main" } } },
+        { ...BASE_ENV, SLP_ROLE: "lead", SLP_ALLOW_EXTERNAL_ACTIONS: "1" }
+      ).decision,
+      "allow"
+    );
+  });
+});

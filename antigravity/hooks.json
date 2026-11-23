@@ -1,0 +1,16 @@
+{
+  "slp-role-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "invoke_subagent|define_subagent|swarm|run_workflow|write_file|edit_file|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__SLP_NODE_BIN__ __SLP_HOME__/.local/share/slp/slp-guard.mjs",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

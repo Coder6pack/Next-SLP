@@ -1,14 +1,17 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-const SUPERVISOR_PROVIDERS = new Set(["codex-supervisor", "agy-supervisor"]);
-const LEAD_PROVIDERS = new Set(["agy-lead"]);
-const PEER_PROVIDERS = new Set(["agy-peer"]);
-const ALL_SLP_PROVIDERS = new Set([
-    ...SUPERVISOR_PROVIDERS,
-    ...LEAD_PROVIDERS,
-    ...PEER_PROVIDERS,
+const DEFAULT_ROLE_BY_PROVIDER = new Map([
+    ["codex-supervisor", "supervisor"],
+    ["agy-supervisor", "supervisor"],
+    ["agy-lead", "lead"],
+    ["agy-peer", "peer"],
 ]);
+const VALID_ROLES = new Set(["supervisor", "lead", "peer"]);
+
+// Lightweight stat-validated cache so multiple checks within one create_agent
+// request avoid redundant disk reads while immediately reflecting config edits.
+const configCache = new Map();
 
 function deny(message) {
     const error = new Error(`SLP delegation denied: ${message}`);
@@ -16,8 +19,48 @@ function deny(message) {
     throw error;
 }
 
-// Local SLP admission policy. Each role provider's configured model catalog in
-// `<paseoHome>/config.json` is the single authority for permitted model/effort pairs.
+async function loadPaseoConfig(paseoHome) {
+    if (typeof paseoHome !== "string" || !paseoHome) {
+        deny("daemon home is unavailable");
+    }
+    const configPath = join(paseoHome, "config.json");
+    let fileStat;
+    try {
+        fileStat = await stat(configPath);
+    }
+    catch {
+        configCache.delete(configPath);
+        deny("the configured role menu cannot be read");
+    }
+    const cached = configCache.get(configPath);
+    if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
+        return cached.config;
+    }
+    let config;
+    try {
+        config = JSON.parse(await readFile(configPath, "utf8"));
+    }
+    catch {
+        configCache.delete(configPath);
+        deny("the configured role menu cannot be read");
+    }
+    configCache.set(configPath, { mtimeMs: fileStat.mtimeMs, size: fileStat.size, config });
+    return config;
+}
+
+function resolveProviderRole(providerId, providersMap) {
+    if (typeof providerId !== "string" || !providerId) {
+        return null;
+    }
+    const declared = providersMap?.[providerId]?.env?.SLP_ROLE;
+    if (typeof declared === "string" && VALID_ROLES.has(declared)) {
+        return declared;
+    }
+    return DEFAULT_ROLE_BY_PROVIDER.get(providerId) ?? null;
+}
+
+// Local SLP admission policy. `<paseoHome>/config.json` is the single authority
+// for provider role tags (`env.SLP_ROLE`) and permitted model/effort pairs.
 export async function assertSlpAgentCreationAllowed({
     agentManager,
     paseoHome,
@@ -32,27 +75,49 @@ export async function assertSlpAgentCreationAllowed({
         caller = agentManager.getAgent(callerAgentId);
         if (!caller) deny("caller agent does not exist");
     }
-    if (PEER_PROVIDERS.has(caller?.provider)) {
+
+    const mightInvolveSlp = DEFAULT_ROLE_BY_PROVIDER.has(caller?.provider)
+        || DEFAULT_ROLE_BY_PROVIDER.has(provider);
+
+    let config = null;
+    try {
+        config = await loadPaseoConfig(paseoHome);
+    }
+    catch (error) {
+        if (mightInvolveSlp) {
+            throw error;
+        }
+        return;
+    }
+
+    const providersMap = config.agents?.providers ?? {};
+    const callerRole = caller ? resolveProviderRole(caller.provider, providersMap) : null;
+    const targetRole = resolveProviderRole(provider, providersMap);
+
+    if (callerRole === "peer") {
         deny("a Peer cannot create agents");
     }
-    if (LEAD_PROVIDERS.has(caller?.provider)) {
-        if (!PEER_PROVIDERS.has(provider)) {
+    if (callerRole === "lead") {
+        if (targetRole !== "peer") {
             deny("a Lead may create only approved Peer providers");
         }
         if (detached) {
             deny("a Lead must retain ownership of its Peer");
         }
     }
-    if (SUPERVISOR_PROVIDERS.has(caller?.provider)) {
-        if (!LEAD_PROVIDERS.has(provider) && !SUPERVISOR_PROVIDERS.has(provider)) {
+    if (callerRole === "supervisor") {
+        if (targetRole !== "lead" && targetRole !== "supervisor") {
             deny("a Supervisor may create only approved Lead or Supervisor providers");
         }
     }
-    if (!ALL_SLP_PROVIDERS.has(provider)) {
+    if (caller && !callerRole && targetRole) {
+        deny("a non-SLP agent cannot create SLP role agents");
+    }
+    if (!targetRole) {
         return;
     }
 
-    const requireExplicitSelection = Boolean(caller) || !SUPERVISOR_PROVIDERS.has(provider);
+    const requireExplicitSelection = Boolean(caller) || targetRole !== "supervisor";
     const hasModel = typeof model === "string" && model.length > 0;
     const hasThinking = typeof thinkingOptionId === "string" && thinkingOptionId.length > 0;
     if (requireExplicitSelection && (!hasModel || !hasThinking)) {
@@ -65,17 +130,7 @@ export async function assertSlpAgentCreationAllowed({
         deny("thinkingOptionId must be a non-empty string when provided");
     }
 
-    if (typeof paseoHome !== "string" || !paseoHome) {
-        deny("daemon home is unavailable");
-    }
-    let config;
-    try {
-        config = JSON.parse(await readFile(join(paseoHome, "config.json"), "utf8"));
-    }
-    catch {
-        deny("the configured role menu cannot be read");
-    }
-    const target = config.agents?.providers?.[provider];
+    const target = providersMap[provider];
     if (!target || target.enabled === false || !Array.isArray(target.models) || target.models.length === 0) {
         deny("the role provider or its configured menu is unavailable");
     }

@@ -30,10 +30,11 @@ Classify each delegated task explicitly in Lead's brief:
 ## Approved seat allocation & permissions
 
 - Standing Human tool permission: SLP seats run unattended inside their assigned scope. When creating Antigravity seats via `create_agent`, pass `settings.modeId = "auto"` and `settings.features.auto_accept = true`, and resolve pending in-scope tool approvals. This does not enable disabled tools, expand scope, or approve external actions.
-- Create Leads only from the Human-approved Lead menu, passing explicit `provider/model` and `settings.thinkingOptionId`:
-  - `agy-lead/gemini-4-neon` with `settings.thinkingOptionId` = `"high"`
+- Create Leads only from the Human-approved Lead menu (use the default Lead pair unless availability, quota, or task needs warrant an approved fallback), passing explicit `provider/model` and `settings.thinkingOptionId`:
+  - `agy-lead/gemini-4-neon` (default) with `settings.thinkingOptionId` = `"high"`
+  - `agy-lead/gemini-4-hydrogen` with `settings.thinkingOptionId` = `"high"`
 - Lead creates Peers only from the Human-approved Peer menu:
-  - `agy-peer/gemini-4-neon` with `settings.thinkingOptionId` = `"high"` or `"xhigh"`
+  - `agy-peer/gemini-4-neon` (default) with `settings.thinkingOptionId` = `"high"` or `"xhigh"`
   - `agy-peer/gemini-4-hydrogen` with `settings.thinkingOptionId` = `"high"` or `"xhigh"`
 - If no approved pair is available or suitable, ask the Human instead of substituting outside this menu.
 - Name each new seat concisely (`<Short scope> · <Task>`, <= 60 chars, no separate naming registry).

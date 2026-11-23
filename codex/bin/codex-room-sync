@@ -5,14 +5,17 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import sys
 import tempfile
+import time
 import tomllib
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 ROLES = ("lead", "peer", "supervisor")
 SHARED = ("auth.json", "skills", "plugins", "AGENTS.md", "model-instructions.md", "hooks.json")
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+DEFAULT_RUNTIME_TTL_DAYS = 14
 
 
 def sanitize_instance_id(raw: str) -> str:
@@ -92,6 +95,31 @@ def build_merged_config(baseline: dict, overlay: dict, agent_id: str | None, mcp
     return merged
 
 
+def prune_stale_runtimes(
+    role_root: Path,
+    keep_names: set[str],
+    max_age_days: float = DEFAULT_RUNTIME_TTL_DAYS,
+    now: float | None = None,
+) -> list[Path]:
+    """Best-effort cleanup of old per-instance Codex runtime directories."""
+    if max_age_days <= 0 or not role_root.is_dir():
+        return []
+    cutoff = (time.time() if now is None else now) - (max_age_days * 86400.0)
+    removed: list[Path] = []
+    for entry in role_root.iterdir():
+        if entry.name in keep_names or entry.name == "default" or entry.is_symlink() or not entry.is_dir():
+            continue
+        marker = entry / "config.toml"
+        try:
+            mtime = marker.stat().st_mtime if marker.exists() else entry.stat().st_mtime
+            if mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
+                removed.append(entry)
+        except OSError:
+            continue
+    return removed
+
+
 def sync_role(role: str, canonical: Path, runtime: Path, agent_id: str | None, mcp_port: int | None = None) -> Path:
     baseline = tomllib.loads((canonical / "config.toml").read_text(encoding="utf-8"))
     overlay = tomllib.loads((canonical / f"{role}.config.toml").read_text(encoding="utf-8"))
@@ -126,6 +154,13 @@ def sync_role(role: str, canonical: Path, runtime: Path, agent_id: str | None, m
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+    raw_ttl = os.environ.get("SLP_RUNTIME_TTL_DAYS", str(DEFAULT_RUNTIME_TTL_DAYS))
+    try:
+        ttl_days = float(raw_ttl)
+    except ValueError:
+        ttl_days = DEFAULT_RUNTIME_TTL_DAYS
+    prune_stale_runtimes(runtime.parent, keep_names={runtime.name}, max_age_days=ttl_days)
     return runtime / "config.toml"
 
 

@@ -23,7 +23,7 @@ Classify each delegated task explicitly in Lead's brief:
 ## Approved seat allocation & permissions
 
 - Standing Human tool permission: SLP seats run unattended inside their assigned scope. When creating Antigravity seats via `create_agent`, pass `settings.modeId = "auto"` and `settings.features.auto_accept = true`, and resolve pending in-scope tool approvals. This does not enable disabled tools, expand scope, or approve external actions.
-- Create Leads only from the Human-approved Lead menu, passing explicit `provider/model` and `settings.thinkingOptionId`:
+- Create Leads only from the Human-approved Lead menu (use the default Lead pair unless availability, quota, or task needs warrant an approved fallback), passing explicit `provider/model` and `settings.thinkingOptionId`:
 {{LEAD_MENU}}
 - Lead creates Peers only from the Human-approved Peer menu:
 {{PEER_MENU}}

@@ -25,6 +25,7 @@ describe("slp-delegation-policy", () => {
     "sup-agy": { id: "sup-agy", provider: "agy-supervisor" },
     "lead-1": { id: "lead-1", provider: "agy-lead" },
     "peer-1": { id: "peer-1", provider: "agy-peer" },
+    "non-slp": { id: "non-slp", provider: "codex" },
   });
 
   before(async () => {
@@ -74,7 +75,7 @@ describe("slp-delegation-policy", () => {
     }
   });
 
-  it("blocks Lead from detached Peers, stale providers, other roles, and out-of-menu efforts", async () => {
+  it("blocks Lead from detached Peers, unapproved providers, other roles, and out-of-menu efforts", async () => {
     await assert.rejects(
       assertSlpAgentCreationAllowed({
         agentManager,
@@ -88,7 +89,7 @@ describe("slp-delegation-policy", () => {
       { code: "slp_delegation_denied", message: /retain ownership/ }
     );
 
-    for (const badProvider of ["pi-peer", "agy-lead", "agy-supervisor", "codex"]) {
+    for (const badProvider of ["unknown-provider", "agy-lead", "agy-supervisor", "codex"]) {
       await assert.rejects(
         assertSlpAgentCreationAllowed({
           agentManager,
@@ -115,17 +116,19 @@ describe("slp-delegation-policy", () => {
     );
   });
 
-  it("enforces Supervisor caller boundaries and menu validation", async () => {
-    await assert.doesNotReject(
-      assertSlpAgentCreationAllowed({
-        agentManager,
-        paseoHome,
-        callerAgentId: "sup-codex",
-        provider: "agy-lead",
-        model: "gemini-4-neon",
-        thinkingOptionId: "high",
-      })
-    );
+  it("enforces Supervisor caller boundaries and menu validation including fallback Lead model", async () => {
+    for (const leadModel of ["gemini-4-neon", "gemini-4-hydrogen"]) {
+      await assert.doesNotReject(
+        assertSlpAgentCreationAllowed({
+          agentManager,
+          paseoHome,
+          callerAgentId: "sup-codex",
+          provider: "agy-lead",
+          model: leadModel,
+          thinkingOptionId: "high",
+        })
+      );
+    }
 
     await assert.doesNotReject(
       assertSlpAgentCreationAllowed({
@@ -139,7 +142,7 @@ describe("slp-delegation-policy", () => {
     );
 
     // Supervisor cannot directly spawn a Peer or arbitrary non-SLP provider.
-    for (const disallowed of ["agy-peer", "codex", "pi-peer"]) {
+    for (const disallowed of ["agy-peer", "codex", "unknown-provider"]) {
       await assert.rejects(
         assertSlpAgentCreationAllowed({
           agentManager,
@@ -165,6 +168,83 @@ describe("slp-delegation-policy", () => {
       }),
       { code: "slp_delegation_denied", message: /outside the configured role menu/ }
     );
+  });
+
+  it("blocks non-SLP agents from creating SLP role agents while allowing non-SLP-to-non-SLP", async () => {
+    for (const slpTarget of ["codex-supervisor", "agy-lead", "agy-peer"]) {
+      await assert.rejects(
+        assertSlpAgentCreationAllowed({
+          agentManager,
+          paseoHome,
+          callerAgentId: "non-slp",
+          provider: slpTarget,
+          model: "gemini-4-neon",
+          thinkingOptionId: "high",
+        }),
+        { code: "slp_delegation_denied", message: /non-SLP agent cannot create SLP role agents/ }
+      );
+    }
+
+    await assert.doesNotReject(
+      assertSlpAgentCreationAllowed({
+        agentManager,
+        paseoHome,
+        callerAgentId: "non-slp",
+        provider: "codex",
+        model: "gpt-6.1-sol",
+        thinkingOptionId: "medium",
+      })
+    );
+  });
+
+  it("derives SLP role dynamically from env.SLP_ROLE in config.json", async () => {
+    const customHome = await mkdtemp(join(tmpdir(), "slp-custom-role-"));
+    try {
+      const cfg = {
+        agents: {
+          providers: {
+            "custom-lead": {
+              env: { SLP_ROLE: "lead" },
+              models: [{ id: "m1", thinkingOptions: [{ id: "high" }] }],
+            },
+            "custom-peer": {
+              env: { SLP_ROLE: "peer" },
+              models: [{ id: "m2", thinkingOptions: [{ id: "high" }] }],
+            },
+          },
+        },
+      };
+      await writeFile(join(customHome, "config.json"), JSON.stringify(cfg), "utf8");
+      const customMgr = makeAgentManager({
+        "c-lead": { id: "c-lead", provider: "custom-lead" },
+        "c-peer": { id: "c-peer", provider: "custom-peer" },
+      });
+
+      await assert.doesNotReject(
+        assertSlpAgentCreationAllowed({
+          agentManager: customMgr,
+          paseoHome: customHome,
+          callerAgentId: "c-lead",
+          provider: "custom-peer",
+          model: "m2",
+          thinkingOptionId: "high",
+        })
+      );
+
+      await assert.rejects(
+        assertSlpAgentCreationAllowed({
+          agentManager: customMgr,
+          paseoHome: customHome,
+          callerAgentId: "c-peer",
+          provider: "custom-peer",
+          model: "m2",
+          thinkingOptionId: "high",
+        }),
+        { code: "slp_delegation_denied", message: /Peer cannot create agents/ }
+      );
+    } finally {
+      await rm(customHome, { recursive: true, force: true });
+    }
   });
 
   it("allows Human UI/CLI to start Supervisors with defaults while rejecting invalid overrides", async () => {

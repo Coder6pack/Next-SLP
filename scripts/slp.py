@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build, verify, render, and diagnose Next-SLP configuration artifacts."""
+"""Build, verify, render, diagnose, check-live, and prune Next-SLP artifacts."""
 from __future__ import annotations
 
 import argparse
@@ -11,9 +11,12 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
+import time
 import tomllib
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+VALID_ROLES = ("supervisor", "lead", "peer")
 
 AGENT_FRONTMATTER = {
     "supervisor": (
@@ -54,23 +57,36 @@ FORBIDDEN_PEER_REFS = (
     "structural-antipatterns.md",
 )
 
-STALE_PROVIDER_TOKENS = ("pi-peer", "deepseek-v4-1-flash")
+PROVIDER_MODEL_REF_RE = re.compile(
+    r"`((?:codex|agy|claude|pi|opencode|copilot)-[a-z0-9-]+/[a-z0-9._-]+)`"
+)
 
 
 def load_providers(repo_root: Path = REPO_ROOT) -> dict:
     return json.loads((repo_root / "paseo" / "providers.json").read_text(encoding="utf-8"))
 
 
-def format_provider_menu(providers_doc: dict, provider_ids: list[str]) -> str:
+def providers_by_role(providers_doc: dict) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {role: [] for role in VALID_ROLES}
+    for pid, entry in providers_doc.get("agents", {}).get("providers", {}).items():
+        role = entry.get("env", {}).get("SLP_ROLE")
+        if role in grouped:
+            grouped[role].append(pid)
+    return grouped
+
+
+def format_provider_menu(providers_doc: dict, role: str) -> str:
     providers = providers_doc["agents"]["providers"]
+    provider_ids = providers_by_role(providers_doc)[role]
     lines: list[str] = []
     for pid in provider_ids:
         entry = providers[pid]
         for model in entry["models"]:
             efforts = [f'`"{opt["id"]}"`' for opt in model["thinkingOptions"]]
             effort_text = " or ".join(efforts)
+            default_tag = " (default)" if model.get("isDefault") and len(entry["models"]) > 1 else ""
             lines.append(
-                f'  - `{pid}/{model["id"]}` with `settings.thinkingOptionId` = {effort_text}'
+                f'  - `{pid}/{model["id"]}`{default_tag} with `settings.thinkingOptionId` = {effort_text}'
             )
     return "\n".join(lines)
 
@@ -78,8 +94,8 @@ def format_provider_menu(providers_doc: dict, provider_ids: list[str]) -> str:
 def render_prompt(role: str, providers_doc: dict, repo_root: Path = REPO_ROOT) -> str:
     raw = (repo_root / "prompts" / f"{role}.md").read_text(encoding="utf-8")
     replacements = {
-        "{{LEAD_MENU}}": format_provider_menu(providers_doc, ["agy-lead"]),
-        "{{PEER_MENU}}": format_provider_menu(providers_doc, ["agy-peer"]),
+        "{{LEAD_MENU}}": format_provider_menu(providers_doc, "lead"),
+        "{{PEER_MENU}}": format_provider_menu(providers_doc, "peer"),
     }
     for token, value in replacements.items():
         raw = raw.replace(token, value)
@@ -165,19 +181,34 @@ def cmd_build(repo_root: Path = REPO_ROOT) -> int:
 def collect_verification_errors(repo_root: Path = REPO_ROOT) -> list[str]:
     errors: list[str] = []
 
-    # 1. Validate providers.json structure.
+    # 1. Validate providers.json structure & positive role contracts.
     providers_doc = load_providers(repo_root)
     providers = providers_doc.get("agents", {}).get("providers", {})
-    expected_providers = {"codex-supervisor", "agy-supervisor", "agy-lead", "agy-peer"}
-    if set(providers.keys()) != expected_providers:
-        errors.append(f"Unexpected provider set: {sorted(providers.keys())}")
+    if not providers:
+        errors.append("paseo/providers.json defines no providers")
+
+    valid_pairs: set[str] = set()
+    by_role = providers_by_role(providers_doc)
+    for role in VALID_ROLES:
+        if not by_role[role]:
+            errors.append(f"No provider declares env.SLP_ROLE={role!r} in paseo/providers.json")
+
     for pid, entry in providers.items():
+        role = entry.get("env", {}).get("SLP_ROLE")
+        if role not in VALID_ROLES:
+            errors.append(f"Provider {pid} must declare env.SLP_ROLE in {VALID_ROLES}")
+        if role == "peer":
+            if entry.get("paseoTools", {}).get("enabled") is not False:
+                errors.append(f"Peer provider {pid} must set paseoTools.enabled = false")
         models = entry.get("models", [])
         if not models:
             errors.append(f"Provider {pid} has no models")
         for model in models:
+            mid = model.get("id")
+            if mid:
+                valid_pairs.add(f"{pid}/{mid}")
             if not model.get("thinkingOptions"):
-                errors.append(f"Provider {pid}/{model.get('id')} has no thinkingOptions")
+                errors.append(f"Provider {pid}/{mid} has no thinkingOptions")
 
     # 2. Check generated artifacts are up-to-date.
     for path, expected in expected_generated_files(repo_root).items():
@@ -197,18 +228,19 @@ def collect_verification_errors(repo_root: Path = REPO_ROOT) -> list[str]:
     if codex_toml.get("developer_instructions") != agy_body:
         errors.append("codex/supervisor.config.toml instructions diverge from antigravity/agents/slp-supervisor.md")
 
-    # 4. Check zero stale provider names in prompts/configs.
+    # 4. Positive provider/model contract check across prompts & generated configs.
     checked_paths = [
         *(repo_root / "prompts").glob("*.md"),
         *(repo_root / "antigravity" / "agents").glob("*.md"),
         repo_root / "codex" / "supervisor.config.toml",
-        repo_root / "paseo" / "providers.json",
     ]
     for path in checked_paths:
         text = path.read_text(encoding="utf-8")
-        for token in STALE_PROVIDER_TOKENS:
-            if token in text:
-                errors.append(f"Stale provider reference `{token}` found in {path.relative_to(repo_root)}")
+        for ref in PROVIDER_MODEL_REF_RE.findall(text):
+            if ref not in valid_pairs:
+                errors.append(
+                    f"Unconfigured provider/model reference `{ref}` in {path.relative_to(repo_root)}"
+                )
 
     # 5. Check zero Protocol Leak in Peer prompt.
     for peer_file in (repo_root / "prompts" / "peer.md", repo_root / "antigravity" / "agents" / "slp-peer.md"):
@@ -231,14 +263,29 @@ def collect_verification_errors(repo_root: Path = REPO_ROOT) -> list[str]:
             if not (repo_root / rel).exists():
                 errors.append(f"Broken shared reference `{rel}` in {path.relative_to(repo_root)}")
 
-    # 7. Verify launchers are executable.
-    for launcher in (
+    # 7. Validate Antigravity hook & MCP fragments parse as JSON.
+    for json_rel in ("antigravity/hooks.json", "antigravity/mcp_config.json"):
+        jpath = repo_root / json_rel
+        if not jpath.exists():
+            errors.append(f"Missing Antigravity fragment: {json_rel}")
+            continue
+        try:
+            json.loads(jpath.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            errors.append(f"Invalid JSON in {json_rel}: {exc}")
+
+    # 8. Verify launchers & hook script are executable.
+    for executable in (
         repo_root / "codex" / "bin" / "codex-room",
         repo_root / "codex" / "bin" / "codex-room-sync",
+        repo_root / "antigravity" / "hooks" / "slp-guard.mjs",
     ):
-        mode = launcher.stat().st_mode
+        if not executable.exists():
+            errors.append(f"Missing executable script: {executable.relative_to(repo_root)}")
+            continue
+        mode = executable.stat().st_mode
         if not (mode & stat.S_IXUSR):
-            errors.append(f"Launcher is not executable: {launcher.relative_to(repo_root)}")
+            errors.append(f"Script is not executable: {executable.relative_to(repo_root)}")
 
     return errors
 
@@ -249,25 +296,17 @@ def cmd_verify(repo_root: Path = REPO_ROOT) -> int:
         for err in errors:
             print(f"ERROR: {err}", file=sys.stderr)
         return 1
-    print("OK: all SLP configs, prompts, shared references, and patch hunks are consistent.")
+    print("OK: all SLP configs, prompts, hooks, shared references, and patch hunks are consistent.")
     return 0
 
 
-def cmd_render(args: argparse.Namespace, repo_root: Path = REPO_ROOT) -> int:
-    errors = collect_verification_errors(repo_root)
-    if errors:
-        for err in errors:
-            print(f"ERROR: {err}", file=sys.stderr)
-        return 1
-
-    home_dir = str(Path(args.home).expanduser().resolve())
-    node_bin = args.node_bin or shutil.which("node") or "/opt/homebrew/bin/node"
-    codex_bin = args.codex_bin or shutil.which("codex") or f"{home_dir}/.local/bin/codex"
-    out_dir = Path(args.out).expanduser().resolve()
-    if out_dir.exists() and not args.force:
-        print(f"ERROR: output directory already exists: {out_dir} (pass --force to overwrite)", file=sys.stderr)
-        return 1
-
+def build_bundle(
+    out_dir: Path,
+    home_dir: str,
+    node_bin: str,
+    codex_bin: str,
+    repo_root: Path = REPO_ROOT,
+) -> None:
     replacements = {
         "__SLP_HOME__": home_dir,
         "__SLP_NODE_BIN__": node_bin,
@@ -280,6 +319,9 @@ def cmd_render(args: argparse.Namespace, repo_root: Path = REPO_ROOT) -> int:
         ("codex/bin/codex-room-sync", "bin/codex-room-sync"),
         ("paseo/providers.json", "paseo/providers.json"),
         ("paseo/mcp/paseo-projects.mjs", "share/slp/paseo-projects.mjs"),
+        ("antigravity/hooks/slp-guard.mjs", "share/slp/slp-guard.mjs"),
+        ("antigravity/hooks.json", "antigravity/hooks.json"),
+        ("antigravity/mcp_config.json", "antigravity/mcp_config.json"),
         ("patches/paseo-slp-admission.patch", "patches/paseo-slp-admission.patch"),
     ]
     for src_dir, dst_prefix in (("antigravity/agents", "antigravity/agents"), ("shared", "shared")):
@@ -307,7 +349,27 @@ def cmd_render(args: argparse.Namespace, repo_root: Path = REPO_ROOT) -> int:
 
     # Validate rendered JSON and TOML.
     json.loads((out_dir / "paseo" / "providers.json").read_text(encoding="utf-8"))
+    json.loads((out_dir / "antigravity" / "hooks.json").read_text(encoding="utf-8"))
+    json.loads((out_dir / "antigravity" / "mcp_config.json").read_text(encoding="utf-8"))
     tomllib.loads((out_dir / "codex" / "supervisor.config.toml").read_text(encoding="utf-8"))
+
+
+def cmd_render(args: argparse.Namespace, repo_root: Path = REPO_ROOT) -> int:
+    errors = collect_verification_errors(repo_root)
+    if errors:
+        for err in errors:
+            print(f"ERROR: {err}", file=sys.stderr)
+        return 1
+
+    home_dir = str(Path(args.home).expanduser().resolve())
+    node_bin = args.node_bin or shutil.which("node") or "/opt/homebrew/bin/node"
+    codex_bin = args.codex_bin or shutil.which("codex") or f"{home_dir}/.local/bin/codex"
+    out_dir = Path(args.out).expanduser().resolve()
+    if out_dir.exists() and not args.force:
+        print(f"ERROR: output directory already exists: {out_dir} (pass --force to overwrite)", file=sys.stderr)
+        return 1
+
+    build_bundle(out_dir, home_dir=home_dir, node_bin=node_bin, codex_bin=codex_bin, repo_root=repo_root)
 
     print(f"Rendered machine bundle to: {out_dir}")
     print(f"  HOME      = {home_dir}")
@@ -325,6 +387,120 @@ def find_paseo_server_dir() -> Path | None:
     return candidate if (candidate / "session.js").exists() else None
 
 
+def check_patch_status(server_dir: Path | None, repo_root: Path = REPO_ROOT) -> str:
+    if not server_dir:
+        return "NOT FOUND"
+    patch_file = repo_root / "patches" / "paseo-slp-admission.patch"
+    fwd = subprocess.run(
+        ["git", "apply", "--check", str(patch_file)],
+        cwd=server_dir,
+        capture_output=True,
+        text=True,
+    )
+    rev = subprocess.run(
+        ["git", "apply", "--reverse", "--check", str(patch_file)],
+        cwd=server_dir,
+        capture_output=True,
+        text=True,
+    )
+    if rev.returncode == 0:
+        return "ALREADY APPLIED (matches this patch)"
+    if fwd.returncode == 0:
+        return "READY TO APPLY cleanly"
+    return "DIFFERS (custom/older patch or different Paseo build)"
+
+
+def collect_live_drift(
+    home_dir: Path,
+    node_bin: str,
+    codex_bin: str,
+    repo_root: Path = REPO_ROOT,
+) -> list[tuple[str, str]]:
+    """Compare live installed files under home_dir against rendered repo bundle (read-only)."""
+    results: list[tuple[str, str]] = []
+    resolved_home = str(home_dir.expanduser().resolve())
+    with tempfile.TemporaryDirectory() as tmp:
+        bundle = Path(tmp) / "bundle"
+        build_bundle(bundle, home_dir=resolved_home, node_bin=node_bin, codex_bin=codex_bin, repo_root=repo_root)
+
+        file_pairs = [
+            ("codex/supervisor.config.toml", home_dir / ".codex" / "supervisor.config.toml"),
+            ("bin/codex-room", home_dir / ".local" / "bin" / "codex-room"),
+            ("bin/codex-room-sync", home_dir / ".local" / "bin" / "codex-room-sync"),
+            ("share/slp/paseo-projects.mjs", home_dir / ".local" / "share" / "slp" / "paseo-projects.mjs"),
+            ("share/slp/slp-guard.mjs", home_dir / ".local" / "share" / "slp" / "slp-guard.mjs"),
+            ("antigravity/agents/slp-supervisor.md", home_dir / ".gemini" / "config" / "agents" / "slp-supervisor.md"),
+            ("antigravity/agents/slp-lead.md", home_dir / ".gemini" / "config" / "agents" / "slp-lead.md"),
+            ("antigravity/agents/slp-peer.md", home_dir / ".gemini" / "config" / "agents" / "slp-peer.md"),
+        ]
+        for rel, live_path in file_pairs:
+            label = str(live_path)
+            if not live_path.exists():
+                results.append(("MISSING", label))
+            elif live_path.read_text(encoding="utf-8") != (bundle / rel).read_text(encoding="utf-8"):
+                results.append(("DRIFT", label))
+            else:
+                results.append(("MATCH", label))
+
+        # Check Paseo config SLP provider entries.
+        paseo_cfg = home_dir / ".paseo" / "config.json"
+        expected_providers = json.loads((bundle / "paseo" / "providers.json").read_text(encoding="utf-8"))[
+            "agents"
+        ]["providers"]
+        if not paseo_cfg.exists():
+            results.append(("MISSING", str(paseo_cfg)))
+        else:
+            try:
+                live_paseo = json.loads(paseo_cfg.read_text(encoding="utf-8"))
+                live_providers = live_paseo.get("agents", {}).get("providers", {})
+                drifted = [
+                    pid
+                    for pid, spec in expected_providers.items()
+                    if live_providers.get(pid) != spec
+                ]
+                if drifted:
+                    results.append(("DRIFT", f"{paseo_cfg} (providers: {', '.join(drifted)})"))
+                else:
+                    results.append(("MATCH", f"{paseo_cfg} (SLP providers)"))
+            except json.JSONDecodeError:
+                results.append(("INVALID", str(paseo_cfg)))
+
+        # Check Antigravity hooks.json & mcp_config.json fragments.
+        hooks_path = home_dir / ".gemini" / "config" / "hooks.json"
+        expected_hook = json.loads((bundle / "antigravity" / "hooks.json").read_text(encoding="utf-8"))[
+            "slp-role-guard"
+        ]
+        if not hooks_path.exists():
+            results.append(("MISSING", f"{hooks_path} (slp-role-guard)"))
+        else:
+            try:
+                live_hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
+                if live_hooks.get("slp-role-guard") == expected_hook:
+                    results.append(("MATCH", f"{hooks_path} (slp-role-guard)"))
+                else:
+                    results.append(("DRIFT", f"{hooks_path} (slp-role-guard)"))
+            except json.JSONDecodeError:
+                results.append(("INVALID", str(hooks_path)))
+
+        mcp_path = home_dir / ".gemini" / "config" / "mcp_config.json"
+        expected_mcp = json.loads((bundle / "antigravity" / "mcp_config.json").read_text(encoding="utf-8"))[
+            "mcpServers"
+        ]["paseo-projects"]
+        if not mcp_path.exists():
+            results.append(("MISSING", f"{mcp_path} (paseo-projects)"))
+        else:
+            try:
+                live_mcp = json.loads(mcp_path.read_text(encoding="utf-8"))
+                if live_mcp.get("mcpServers", {}).get("paseo-projects") == expected_mcp:
+                    results.append(("MATCH", f"{mcp_path} (paseo-projects)"))
+                else:
+                    results.append(("DRIFT", f"{mcp_path} (paseo-projects)"))
+            except json.JSONDecodeError:
+                results.append(("INVALID", str(mcp_path)))
+
+    return results
+
+
 def cmd_doctor(repo_root: Path = REPO_ROOT) -> int:
     print("Next-SLP host diagnostics:")
     print(f"  python3 : {sys.executable} ({sys.version.split()[0]})")
@@ -334,41 +510,96 @@ def cmd_doctor(repo_root: Path = REPO_ROOT) -> int:
 
     server_dir = find_paseo_server_dir()
     print(f"  paseo server dist : {server_dir or 'NOT FOUND'}")
-    patch_file = repo_root / "patches" / "paseo-slp-admission.patch"
-    if server_dir:
-        fwd = subprocess.run(
-            ["git", "apply", "--check", str(patch_file)],
-            cwd=server_dir,
-            capture_output=True,
-            text=True,
-        )
-        rev = subprocess.run(
-            ["git", "apply", "--reverse", "--check", str(patch_file)],
-            cwd=server_dir,
-            capture_output=True,
-            text=True,
-        )
-        if rev.returncode == 0:
-            print("  admission patch   : ALREADY APPLIED (matches this patch)")
-        elif fwd.returncode == 0:
-            print("  admission patch   : READY TO APPLY cleanly")
-        else:
-            print("  admission patch   : DIFFERS (custom/older patch or different Paseo build)")
+    print(f"  admission patch   : {check_patch_status(server_dir, repo_root)}")
+
+    home_dir = Path.home()
+    node_bin = shutil.which("node") or "/opt/homebrew/bin/node"
+    codex_bin = shutil.which("codex") or f"{home_dir}/.local/bin/codex"
+    drift_rows = collect_live_drift(home_dir, node_bin=node_bin, codex_bin=codex_bin, repo_root=repo_root)
+    drifted = [row for row in drift_rows if row[0] != "MATCH"]
+    print(f"  live config sync  : {len(drift_rows) - len(drifted)}/{len(drift_rows)} matched (run `check-live` for details)")
+    return 0
+
+
+def cmd_check_live(args: argparse.Namespace, repo_root: Path = REPO_ROOT) -> int:
+    errors = collect_verification_errors(repo_root)
+    if errors:
+        for err in errors:
+            print(f"ERROR: {err}", file=sys.stderr)
+        return 1
+
+    home_dir = Path(args.home).expanduser().resolve()
+    node_bin = args.node_bin or shutil.which("node") or "/opt/homebrew/bin/node"
+    codex_bin = args.codex_bin or shutil.which("codex") or f"{home_dir}/.local/bin/codex"
+    rows = collect_live_drift(home_dir, node_bin=node_bin, codex_bin=codex_bin, repo_root=repo_root)
+
+    has_diff = False
+    for status, target in rows:
+        print(f"  [{status:<7}] {target}")
+        if status != "MATCH":
+            has_diff = True
+
+    if not args.skip_patch:
+        server_dir = find_paseo_server_dir()
+        patch_status = check_patch_status(server_dir, repo_root)
+        tag = "MATCH" if patch_status.startswith("ALREADY APPLIED") else "DRIFT"
+        print(f"  [{tag:<7}] paseo admission patch ({patch_status})")
+        if tag != "MATCH":
+            has_diff = True
+
+    return 1 if has_diff else 0
+
+
+def cmd_prune(args: argparse.Namespace) -> int:
+    runtime_root = Path(args.home).expanduser().resolve() / ".codex-runtime"
+    if not runtime_root.is_dir():
+        print(f"No Codex runtime directory found at {runtime_root}")
+        return 0
+    cutoff = time.time() - (args.days * 86400.0)
+    removed = 0
+    for role_dir in sorted(runtime_root.iterdir()):
+        if not role_dir.is_dir() or role_dir.is_symlink():
+            continue
+        for instance_dir in sorted(role_dir.iterdir()):
+            if instance_dir.name == "default" or instance_dir.is_symlink() or not instance_dir.is_dir():
+                continue
+            marker = instance_dir / "config.toml"
+            mtime = marker.stat().st_mtime if marker.exists() else instance_dir.stat().st_mtime
+            if mtime < cutoff:
+                action = "would remove" if args.dry_run else "removed"
+                if not args.dry_run:
+                    shutil.rmtree(instance_dir, ignore_errors=True)
+                print(f"{action}: {instance_dir}")
+                removed += 1
+    print(f"Prune complete: {removed} stale runtime director{'y' if removed == 1 else 'ies'}.")
     return 0
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Next-SLP config builder, verifier, and renderer")
+    parser = argparse.ArgumentParser(description="Next-SLP config builder, verifier, renderer, and live checker")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("build", help="Regenerate checked-in prompts, TOML, and admission patch from single sources")
     sub.add_parser("verify", help="Verify cross-file consistency and zero drift")
+
     render_p = sub.add_parser("render", help="Render a machine-ready bundle with resolved paths")
     render_p.add_argument("--out", required=True, help="Output directory for rendered bundle")
     render_p.add_argument("--home", default=str(Path.home()), help="Target machine home directory")
     render_p.add_argument("--node-bin", default="", help="Override node executable path")
     render_p.add_argument("--codex-bin", default="", help="Override codex executable path")
     render_p.add_argument("--force", action="store_true", help="Overwrite existing output directory")
-    sub.add_parser("doctor", help="Check local host binaries and Paseo patch status (read-only)")
+
+    sub.add_parser("doctor", help="Check local host binaries, patch status, and live sync summary (read-only)")
+
+    live_p = sub.add_parser("check-live", help="Compare installed files on a machine against rendered bundle (read-only)")
+    live_p.add_argument("--home", default=str(Path.home()), help="Target machine home directory")
+    live_p.add_argument("--node-bin", default="", help="Override node executable path")
+    live_p.add_argument("--codex-bin", default="", help="Override codex executable path")
+    live_p.add_argument("--skip-patch", action="store_true", help="Skip host Paseo server patch check")
+
+    prune_p = sub.add_parser("prune", help="Remove stale per-agent directories under ~/.codex-runtime")
+    prune_p.add_argument("--home", default=str(Path.home()), help="Target machine home directory")
+    prune_p.add_argument("--days", type=float, default=14.0, help="Remove instances older than N days (default: 14)")
+    prune_p.add_argument("--dry-run", action="store_true", help="List stale directories without deleting them")
 
     args = parser.parse_args()
     if args.command == "build":
@@ -379,6 +610,10 @@ def main() -> int:
         return cmd_render(args)
     if args.command == "doctor":
         return cmd_doctor()
+    if args.command == "check-live":
+        return cmd_check_live(args)
+    if args.command == "prune":
+        return cmd_prune(args)
     return 2
 
 

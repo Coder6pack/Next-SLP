@@ -4,8 +4,16 @@ set -euo pipefail
 role="${1:?usage: codex-room <supervisor|lead|peer> [codex arguments...]}"
 shift
 
+resolve_real() {
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "$1"
+  else
+    python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"
+  fi
+}
+
 room_bin="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-self_real="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "${BASH_SOURCE[0]}")"
+self_real="$(resolve_real "${BASH_SOURCE[0]}")"
 
 # Isolate runtime home per role + Paseo agent instance so concurrent Codex seats
 # never overwrite each other's config.toml or callerAgentId.
@@ -31,7 +39,7 @@ else
   exit 127
 fi
 
-codex_real="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$codex_bin")"
+codex_real="$(resolve_real "$codex_bin")"
 if [[ "$codex_real" == "$self_real" ]]; then
   echo "codex-room: CODEX_BIN resolves to codex-room itself ($codex_bin); refusing recursive exec" >&2
   exit 2

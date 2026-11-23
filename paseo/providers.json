@@ -20,7 +20,8 @@
           "supervisor"
         ],
         "env": {
-          "CODEX_BIN": "__SLP_CODEX_BIN__"
+          "CODEX_BIN": "__SLP_CODEX_BIN__",
+          "SLP_ROLE": "supervisor"
         },
         "models": [
           {
@@ -135,6 +136,9 @@
           "--dangerously-skip-permissions",
           "--process-per-session"
         ],
+        "env": {
+          "SLP_ROLE": "supervisor"
+        },
         "models": [
           {
             "id": "gemini-4-neon",
@@ -194,11 +198,26 @@
           "--dangerously-skip-permissions",
           "--process-per-session"
         ],
+        "env": {
+          "SLP_ROLE": "lead"
+        },
         "models": [
           {
             "id": "gemini-4-neon",
             "label": "Gemini 4 Neon",
             "isDefault": true,
+            "thinkingOptions": [
+              {
+                "id": "high",
+                "label": "High",
+                "isDefault": true
+              }
+            ]
+          },
+          {
+            "id": "gemini-4-hydrogen",
+            "label": "Gemini 4 Hydrogen",
+            "isDefault": false,
             "thinkingOptions": [
               {
                 "id": "high",
@@ -213,6 +232,11 @@
             "create_workspace",
             "rename_workspace",
             "archive_workspace",
+            "list_workspaces",
+            "list_providers",
+            "inspect_provider",
+            "list_models",
+            "list_profiles",
             "list_workspace_scripts",
             "start_workspace_script",
             "stop_workspace_script",
@@ -248,6 +272,9 @@
           "--dangerously-skip-permissions",
           "--process-per-session"
         ],
+        "env": {
+          "SLP_ROLE": "peer"
+        },
         "models": [
           {
             "id": "gemini-4-neon",
@@ -283,26 +310,9 @@
           }
         ],
         "paseoTools": {
+          "enabled": false,
           "disabledTools": [
-            "create_workspace",
-            "rename_workspace",
-            "archive_workspace",
-            "list_workspace_scripts",
-            "start_workspace_script",
-            "stop_workspace_script",
-            "speak",
-            "create_schedule",
-            "list_schedules",
-            "inspect_schedule",
-            "pause_schedule",
-            "resume_schedule",
-            "update_schedule",
-            "schedule_logs",
-            "run_schedule_once",
-            "delete_schedule",
-            "create_heartbeat",
-            "delete_heartbeat",
-            "create_agent"
+            "speak"
           ]
         }
       }
