@@ -1,73 +1,74 @@
 # Next-SLP
 
-Bộ cấu hình điều phối SLP (`Supervisor → Lead → Peer`) chạy trên Paseo, tối ưu
-theo nguyên tắc **một nguồn sự thật (single source of truth)**, phân quyền cứng
-ở tầng server + Antigravity `PreToolUse` hook, và phân luồng theo cỡ task
-(`tiny` / `standard` / `high-risk`).
+A structured **SLP (`Supervisor → Lead → Peer`)** multi-agent orchestration kit
+for Paseo, built around a **single source of truth**, two-layer enforcement
+(Paseo server admission gate + Antigravity `PreToolUse` guard hook), and
+task-size routing (`tiny` / `standard` / `high-risk`).
 
-## Menu hiện tại
+## Role Menu
 
-| Role | Provider | Model / effort |
+| Role | Provider | Model / thinking effort |
 | --- | --- | --- |
-| Supervisor | `codex-supervisor` | `gpt-6.1-sol` (mặc định `medium`), `gpt-6-astra` |
-| Supervisor | `agy-supervisor` | `gemini-4-neon` (`low` / `medium` / `high`, mặc định `medium`) |
-| Lead | `agy-lead` | `gemini-4-neon` (`high`, mặc định), `gemini-4-hydrogen` (`high`, fallback) |
+| Supervisor | `codex-supervisor` | `gpt-6.1-sol` (default `medium`), `gpt-6-astra` |
+| Supervisor | `agy-supervisor` | `gemini-4-neon` (`low` / `medium` / `high`, default `medium`) |
+| Lead | `agy-lead` | `gemini-4-neon` (`high`, default), `gemini-4-hydrogen` (`high`, fallback) |
 | Peer | `agy-peer` | `gemini-4-neon` (`high` / `xhigh`), `gemini-4-hydrogen` (`high` / `xhigh`) |
 
-Menu thực tế, `env.SLP_ROLE` và `paseoTools` lấy trực tiếp từ
-[paseo/providers.json](paseo/providers.json); `scripts/slp.py build` tự đồng bộ
-menu vào prompt, TOML và admission patch rồi kiểm chứng chéo bằng test & CI.
+The live menu, `env.SLP_ROLE` tags, and `paseoTools` policies are defined once
+in [paseo/providers.json](paseo/providers.json). `scripts/slp.py build` syncs
+the menu into prompts, Codex TOML, and the Paseo admission patch, and automated
+tests + CI verify zero drift.
 
-## Cấu trúc thư mục
+## Repository Layout
 
 ```text
-prompts/                         Nguồn duy nhất của instruction 3 role (supervisor/lead/peer)
-paseo/providers.json             Fragment provider + env.SLP_ROLE + menu model/effort + paseoTools
-paseo/mcp/paseo-projects.mjs     MCP server read-only liệt kê project Paseo (portable)
-codex/supervisor.overlay.toml    Overlay cấu hình Codex Supervisor (không lặp prompt)
-codex/supervisor.config.toml     Artifact đã build từ overlay + prompts/supervisor.md
-codex/bin/                       Launcher codex-room (cô lập theo PASEO_AGENT_ID) & codex-room-sync (+ tự dọn runtime cũ)
-antigravity/agents/              Artifact đã build từ prompts/*.md kèm frontmatter
-antigravity/hooks/               PreToolUse guard (slp-guard.mjs) chặn bypass native subagent, sửa ~/shared, git push
-antigravity/hooks.json           Fragment cấu hình hook cho ~/.gemini/config/hooks.json
-antigravity/mcp_config.json      Fragment MCP paseo-projects cho ~/.gemini/config/mcp_config.json
-shared/                          Thư viện tham chiếu phân vùng theo đối tượng (supervisor/lead/guides)
-patches/                         Admission policy (slp-delegation-policy.js) + patch Paseo 0.11.2
+prompts/                         Single source of truth for the 3 role prompts (supervisor/lead/peer)
+paseo/providers.json             Provider fragment: env.SLP_ROLE, model/effort menu, and paseoTools policy
+paseo/mcp/paseo-projects.mjs     Portable read-only MCP server listing registered Paseo projects
+codex/supervisor.overlay.toml    Codex Supervisor config overlay (no duplicated prompt text)
+codex/supervisor.config.toml     Generated from overlay + prompts/supervisor.md
+codex/bin/                       codex-room (PASEO_AGENT_ID isolation) & codex-room-sync (+ stale runtime GC)
+antigravity/agents/              Generated from prompts/*.md with agent frontmatter
+antigravity/hooks/               PreToolUse guard (slp-guard.mjs) blocking native subagents, ~/shared writes, git push
+antigravity/hooks.json           Hook fragment for ~/.gemini/config/hooks.json
+antigravity/mcp_config.json      MCP fragment (paseo-projects) for ~/.gemini/config/mcp_config.json
+shared/                          Audience-scoped on-demand reference library (supervisor/lead/guides)
+patches/                         Admission policy (slp-delegation-policy.js) + Paseo 0.11.2 server patch
 scripts/slp.py                   CLI: build, verify, render, doctor, check-live, prune
-tests/                           Unit test consistency, admission policy, slp-guard, codex-room-sync
-docs/                            Hướng dẫn cài đặt có kiểm soát & giới hạn
+tests/                           Unit tests for consistency, admission policy, slp-guard, codex-room-sync
+docs/                            Controlled setup guide and known limitations
 ```
 
-## Lệnh nhanh
+## Quick Commands
 
 ```sh
-# 1. Build lại các artifact từ nguồn duy nhất (sau khi sửa prompts/, providers.json, hoặc policy)
+# 1. Rebuild generated artifacts from single sources (after editing prompts/, providers.json, or policy)
 python3 scripts/slp.py build
 
-# 2. Kiểm tra đồng bộ toàn repo + chạy toàn bộ unit test
+# 2. Verify cross-file consistency and run all unit tests
 python3 scripts/slp.py verify
 python3 -m unittest discover -s tests -v
 node --test tests/test_*.mjs
 
-# 3. Chẩn đoán môi trường & kiểm tra drift so với cấu hình đang cài trên máy (read-only)
+# 3. Inspect host binaries, patch status, and live config drift (read-only)
 python3 scripts/slp.py doctor
 python3 scripts/slp.py check-live
 
-# 4. Render bundle sẵn đường dẫn thực cho máy đích (không tự ghi đè máy)
+# 4. Render a machine-ready bundle with resolved host paths (never overwrites host files)
 python3 scripts/slp.py render --out dist/local-bundle --home "$HOME" --force
 
-# 5. Dọn thư mục ~/.codex-runtime cũ (thêm --dry-run để xem trước)
+# 5. Clean up stale ~/.codex-runtime instance directories (use --dry-run to preview)
 python3 scripts/slp.py prune --days 14 --dry-run
 ```
 
-## Điểm cần biết
+## Key Design Points
 
-- **Phân luồng theo cỡ task:** `tiny` (1–2 file, không cần `workspace-protocol.md` hay learning note), `standard` (dùng protocol nếu có hoặc default trong brief + learning note tiếng Việt gọn 5 mục), `high-risk` (bắt buộc `workspace-protocol.md` được Human duyệt).
-- **Zero Paseo Tools & Chống Protocol Leak cho Peer:** `agy-peer` đặt `paseoTools.enabled = false` (tắt toàn bộ tool điều phối Paseo, tiết kiệm schema token và chặn tận gốc việc gọi `send_agent_prompt` / `kill_agent` / `create_agent`), đồng thời prompt Peer không dẫn tới tài liệu điều phối.
-- **Khóa 2 tầng (Paseo Server + Antigravity `PreToolUse` Hook):**
-  - Admission Gate đọc `env.SLP_ROLE` từ `config.json`: chặn `Peer` tạo agent, chặn `non-SLP` agent tạo role SLP, khóa `Lead` chỉ tạo `agy-peer` không `detached`, khóa `Supervisor` chỉ tạo `Lead`/`Supervisor` đúng menu.
-  - `slp-guard.mjs` (`PreToolUse`, chỉ kích hoạt khi có `SLP_ROLE`): chặn cứng Peer/Lead gọi native `invoke_subagent` / `define_subagent` / `swarm` / `run_workflow`, khóa `~/shared` read-only (trừ append-only `supervisor_notebook.md` cho Supervisor), và chặn `git push` / `gh pr merge` không có ủy quyền.
-- **Định tuyến & chịu lỗi:** `agy-lead` có fallback `gemini-4-hydrogen/high`; Lead có rubric chọn `high`/`xhigh`, ưu tiên **cross-model review** (`neon` ↔ `hydrogen`) và quản lý context (~45% compact/rotate).
-- Không chứa token, tài khoản, baseline Codex cá nhân, hay incident thật.
+- **Task-size routing:** `tiny` (1–2 files, no `workspace-protocol.md` or learning note), `standard` (use existing approved protocol or defaults in the brief + concise 5-section learning note), `high-risk` (requires Human-approved `workspace-protocol.md` before delegating).
+- **Zero Paseo Tools & No Protocol Leak for Peers:** `agy-peer` sets `paseoTools.enabled = false` (removing all Paseo orchestration tools at the server layer to cut prompt schema overhead and block `send_agent_prompt` / `kill_agent` / `create_agent`), and the Peer prompt never links to Lead/Supervisor coordination docs.
+- **Two-layer enforcement (Paseo Server + Antigravity `PreToolUse` Hook):**
+  - Admission gate derives roles dynamically from `env.SLP_ROLE` in `config.json`: blocks `Peer` from creating agents, blocks non-SLP agents from spawning SLP roles, restricts `Lead` to non-detached `Peer` providers in menu, and restricts `Supervisor` to approved `Lead`/`Supervisor` pairs.
+  - `slp-guard.mjs` (`PreToolUse`, no-op when `SLP_ROLE` is unset): hard-blocks `Peer` and `Lead` from calling native `invoke_subagent` / `define_subagent` / `swarm` / `run_workflow`, enforces read-only `~/shared` (except append-only `supervisor_notebook.md` for `Supervisor`), and blocks unattended `git push` / `gh pr merge` / `gh release create` / `gh repo delete`.
+- **Resilience & routing:** `agy-lead` includes a `gemini-4-hydrogen/high` fallback; Lead uses an explicit `high` vs `xhigh` routing rubric, prefers **cross-model review** (`gemini-4-neon` ↔ `gemini-4-hydrogen`), and enforces context hygiene (~45% compact/rotate).
+- Contains no credentials, tokens, personal Codex baselines, or real incident logs.
 
-Đọc [docs/setup.md](docs/setup.md) và [docs/limitations.md](docs/limitations.md) trước khi áp dụng.
+Read [docs/setup.md](docs/setup.md) and [docs/limitations.md](docs/limitations.md) before installing.

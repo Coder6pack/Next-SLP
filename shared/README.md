@@ -24,4 +24,4 @@ document needed for a given situation.
 | [lead/audit.md](lead/audit.md) | Lead (on demand) | Explicitly assigned audit of a behavioral claim and its proof. |
 | [lead/catalog.md](lead/catalog.md) | Lead (on demand) | Search lenses supporting a proof-debt audit. |
 | [lead/structural-antipatterns.md](lead/structural-antipatterns.md) | Lead (on demand) | Architecture / structural review lenses. |
-| [guides/learning-documents.md](guides/learning-documents.md) | Lead, Peer (when requested) | Writing and checking Vietnamese learning notes on `standard` / `high-risk` implementation tasks. |
+| [guides/learning-documents.md](guides/learning-documents.md) | Lead, Peer (when requested) | Writing and checking learning notes on `standard` / `high-risk` implementation tasks. |

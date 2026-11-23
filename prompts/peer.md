@@ -16,4 +16,4 @@ You hold standing Human tool permission inside your assigned scope: run reads, e
 ## Handback & learning notes
 
 - Return your handback **directly in your final message** to Lead (do not create a `handback.md` file in the repository unless Lead explicitly asks for one). Include: outcome, changed files (if any), exact verification commands and real outputs, unresolved risks/dependencies, and recommendation. Lead owns acceptance; a handback is not self-acceptance.
-- Write a Vietnamese learning note **only** when Lead's brief explicitly requests one and reserves a path, following `__SLP_HOME__/shared/guides/learning-documents.md`. Include the exact note path in your handback.
+- Write a learning note **only** when Lead's brief explicitly requests one and reserves a path, following `__SLP_HOME__/shared/guides/learning-documents.md`. Include the exact note path in your handback.

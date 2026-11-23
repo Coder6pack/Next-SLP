@@ -1,19 +1,20 @@
 # Setup
 
-## Phạm vi
+## Scope
 
-Repo này đóng gói cấu hình để kiểm tra và áp dụng có kiểm soát — không có
-installer tự ghi đè máy đích. Dùng `scripts/slp.py render` để xuất một thư mục
-bundle đã thay sẵn đường dẫn thật trên máy đích trước khi chép vào vị trí chạy,
-và dùng `scripts/slp.py check-live` để kiểm tra drift trước/sau khi áp dụng.
+This repository packages SLP configuration for audited, controlled installation
+— there is no blind installer that overwrites your machine. Use
+`scripts/slp.py render` to generate a host-specific bundle with resolved paths
+before copying files into place, and use `scripts/slp.py check-live` to verify
+zero drift before and after applying updates.
 
-## Chuẩn bị
+## Prerequisites
 
-1. Có Paseo (snapshot kiểm chứng: `0.11.2`), Codex CLI, Antigravity CLI (`agy`
-   `1.5.13`), Bash, Node.js và Python 3.11+ (`tomllib`).
-2. Đăng nhập Codex và Antigravity trực tiếp trên máy đích. Không đưa credential
-   vào Git.
-3. Chạy chẩn đoán read-only và kiểm tra test:
+1. Paseo (verified snapshot: `0.11.2`), Codex CLI, Antigravity CLI (`agy`
+   `1.5.13`), Bash, Node.js 22+, and Python 3.11+ (`tomllib`).
+2. Authenticate Codex and Antigravity directly on the target machine. Never
+   commit credentials to Git.
+3. Run read-only host diagnostics and the full test suite:
 
 ```sh
 python3 scripts/slp.py doctor
@@ -22,18 +23,18 @@ python3 -m unittest discover -s tests -v
 node --test tests/test_*.mjs
 ```
 
-4. Render bundle đã điền sẵn `HOME`, `node`, `codex` cho máy đích (có thể truyền
-   `--node-bin` và `--codex-bin` nếu cần ghi đè):
+4. Render a machine-ready bundle with resolved `HOME`, `node`, and `codex`
+   paths (override with `--node-bin` / `--codex-bin` if needed):
 
 ```sh
 python3 scripts/slp.py render --out dist/local-bundle --home "$HOME" --force
 ```
 
-## Áp dụng file từ `dist/local-bundle/`
+## Installing Files from `dist/local-bundle/`
 
-Sao lưu các file hiện có rồi kiểm tra diff trước khi chép:
+Back up existing files and inspect diffs before copying:
 
-| Nguồn trong `dist/local-bundle/` | Đích trên máy |
+| Source in `dist/local-bundle/` | Target on host |
 | --- | --- |
 | `codex/supervisor.config.toml` | `~/.codex/supervisor.config.toml` |
 | `bin/codex-room` | `~/.local/bin/codex-room` |
@@ -41,49 +42,54 @@ Sao lưu các file hiện có rồi kiểm tra diff trước khi chép:
 | `share/slp/paseo-projects.mjs` | `~/.local/share/slp/paseo-projects.mjs` |
 | `share/slp/slp-guard.mjs` | `~/.local/share/slp/slp-guard.mjs` |
 | `antigravity/agents/slp-*.md` | `~/.gemini/config/agents/` |
-| `antigravity/hooks.json` | Ghép khóa `slp-role-guard` vào `~/.gemini/config/hooks.json` |
-| `antigravity/mcp_config.json` | Ghép khóa `mcpServers.paseo-projects` vào `~/.gemini/config/mcp_config.json` |
+| `antigravity/hooks.json` | Merge `slp-role-guard` into `~/.gemini/config/hooks.json` |
+| `antigravity/mcp_config.json` | Merge `mcpServers.paseo-projects` into `~/.gemini/config/mcp_config.json` |
 | `shared/**` | `~/shared/` |
 
-Lưu ý:
-- Không ghi đè `~/shared/supervisor/supervisor_notebook.md` nếu máy đã có
-  notebook thật.
-- Hook `slp-role-guard` tự động **no-op (`allow`)** khi biến môi trường
-  `SLP_ROLE` không được đặt, nên không ảnh hưởng tới phiên Antigravity thông
-  thường ngoài Paseo SLP.
-- Baseline `~/.codex/config.toml` thuộc máy đích. Khi chạy, `codex-room` tự tạo
-  runtime cô lập theo từng instance ở `~/.codex-runtime/supervisor/<PASEO_AGENT_ID>/`,
-  nên chạy nhiều `codex-supervisor` song song sẽ không ghi đè `callerAgentId`
-  của nhau. `codex-room-sync` tự dọn các thư mục runtime cũ hơn 14 ngày
-  (`SLP_RUNTIME_TTL_DAYS`, đặt `0` để tắt; hoặc dọn tay bằng `python3 scripts/slp.py prune`).
-- `codex-room` có cơ chế chống đệ quy nếu `CODEX_BIN` trỏ nhầm vào `codex-room`.
+Notes:
+- Do **not** overwrite `~/shared/supervisor/supervisor_notebook.md` if the host
+  already has an active operational notebook.
+- The `slp-role-guard` `PreToolUse` hook is a **no-op (`allow`)** whenever
+  `SLP_ROLE` is unset, so regular non-SLP Antigravity sessions are unaffected.
+- Your personal baseline `~/.codex/config.toml` stays on the host. At launch,
+  `codex-room` creates an isolated runtime per instance at
+  `~/.codex-runtime/supervisor/<PASEO_AGENT_ID>/`, so concurrent
+  `codex-supervisor` instances never overwrite each other's `callerAgentId`.
+  `codex-room-sync` automatically prunes stale runtime directories older than
+  14 days (`SLP_RUNTIME_TTL_DAYS`, set to `0` to disable, or run
+  `python3 scripts/slp.py prune` manually).
+- `codex-room` detects and refuses recursive execution if `CODEX_BIN` points
+  back to `codex-room`.
 
-## Paseo config
+## Paseo Configuration
 
-`dist/local-bundle/paseo/providers.json` là fragment, **không** thay thế toàn
-bộ `~/.paseo/config.json`. Ghép `daemon.mcp`, `daemon.browserTools` và 4 mục
-`agents.providers` vào config hiện có, giữ nguyên thiết lập mạng/relay và các
-provider ngoài SLP nếu bạn vẫn dùng.
+`dist/local-bundle/paseo/providers.json` is a fragment — do **not** replace
+your entire `~/.paseo/config.json`. Merge `daemon.mcp`, `daemon.browserTools`,
+and the 4 SLP entries under `agents.providers` into your existing config while
+preserving network/relay settings and any non-SLP providers.
 
-## Admission patch
+## Admission Patch
 
-Xác định thư mục server Paseo (hiển thị sẵn qua `python3 scripts/slp.py doctor`)
-và kiểm tra trước khi áp dụng:
+Locate the Paseo server dist directory (printed by `python3 scripts/slp.py doctor`)
+and verify the patch cleanly before applying:
 
 ```sh
 git apply --check /absolute/path/to/next-slp/patches/paseo-slp-admission.patch
 ```
 
-- Nếu máy đang dùng bản patch SLP cũ hơn, reverse bản cũ trước rồi mới áp bản
-  mới (không dùng `--reject` để ép một bản Paseo khác).
-- Nếu sửa code server, restart Paseo khi không còn tác vụ đang chạy.
+- If an older SLP patch is already applied, reverse the old patch cleanly
+  before applying the new one (never force-apply with `--reject` against a
+  different Paseo build).
+- Restart the Paseo daemon after patching when no active tasks are running.
 
-## Kiểm tra sau khi cài
+## Post-Install Verification
 
-- Chạy `python3 scripts/slp.py check-live` — mọi mục khớp sẽ in `[MATCH]`.
-- Chạy thử `PASEO_AGENT_ID=smoke-test codex-room-sync supervisor` và kiểm tra
-  `~/.codex-runtime/supervisor/smoke-test/config.toml` (xóa thư mục test sau đó).
-- Chạy `paseo provider models <provider-id> --json` để đối chiếu menu.
-- Thử tạo `agy-lead` → `agy-peer` đúng menu, kiểm tra từ chối model/effort ngoài
-  menu, từ chối `detached` Peer, từ chối `non-SLP` agent tạo SLP role, và kiểm
-  tra `agy-peer` không có Paseo tools lẫn bị `slp-guard` chặn `invoke_subagent`.
+- Run `python3 scripts/slp.py check-live` — every item should report `[MATCH]`.
+- Smoke-test Codex runtime sync: `PASEO_AGENT_ID=smoke-test codex-room-sync supervisor`,
+  inspect `~/.codex-runtime/supervisor/smoke-test/config.toml`, then remove the
+  smoke-test directory.
+- Run `paseo provider models <provider-id> --json` to confirm the live menu.
+- Verify delegation boundaries: `agy-lead` → `agy-peer` succeeds for approved
+  pairs, rejects out-of-menu models/efforts, rejects `detached` Peers, rejects
+  non-SLP agents spawning SLP roles, and `agy-peer` has zero Paseo tools plus
+  `slp-guard` blocking native `invoke_subagent`.

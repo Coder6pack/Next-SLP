@@ -1,28 +1,29 @@
-# Giới hạn của bộ cấu hình
+# Known Limitations
 
-- **Phạm vi đóng gói:** Không chứa credential, baseline `~/.codex/config.toml`,
-  trạng thái phiên chạy hay incident thật trong `supervisor_notebook.md`.
-- **Phụ thuộc phiên bản:** Kiểm chứng trên Paseo `0.11.2` và Antigravity CLI
-  `1.5.13`. Patch server có thể mất khi nâng cấp npm/Paseo và cần kiểm tra lại
-  bằng `python3 scripts/slp.py doctor` / `git apply --check`.
-- **Không phải sandbox bảo mật tuyệt đối:** Admission policy kiểm soát các entry
-  point tạo agent của Paseo, và `antigravity/hooks/slp-guard.mjs` (`PreToolUse`)
-  chặn cứng native subagent/swarm/workflow, ghi `~/shared` và `git push` trong
-  Antigravity khi `SLP_ROLE` được đặt. Tuy nhiên, tiến trình vẫn chạy với
-  `--dangerously-skip-permissions` / `danger-full-access` nên các lớp này là
-  guardrail vận hành chống drift/nhầm lẫn, không thay thế OS sandbox hay
-  container isolation trước mã độc chủ đích.
-- **Ngưỡng auto-compact 300.000 tokens:** Chỉ áp dụng cấu hình cứng cho
-  `codex-supervisor`; context thực tế của model vẫn là giới hạn trên. Các role
-  Antigravity dựa vào quy tắc context hygiene trong prompt và hành vi compact
-  của runtime.
-- **Phân quyền `shared/`:** Antigravity được chặn ghi `~/shared` bằng
-  `slp-guard.mjs` (cho phép Supervisor append `supervisor_notebook.md`), còn
-  Codex Supervisor vẫn dựa vào quy ước instruction (hoặc cần bổ sung hook tương
-  đương nếu muốn khóa ở tầng CLI).
-- **Phạm vi kiểm thử tự động:** Bộ test trong `tests/` (chạy cả trong GitHub
-  Actions CI) kiểm chứng consistency toàn repo, `scripts/slp.py render` &
-  `check-live`, `codex-room`/`codex-room-sync` (cô lập concurrent + chống đệ quy
-  + dọn runtime cũ), mọi nhánh của `slp-delegation-policy.js`, và mọi luật của
-  `slp-guard.mjs`. Chưa chạy E2E inference trực tiếp qua tài khoản LLM thật
-  trong CI.
+- **Packaging scope:** Does not include credentials, personal
+  `~/.codex/config.toml` baselines, runtime state, or real incident history in
+  `supervisor_notebook.md`.
+- **Version coupling:** Verified against Paseo `0.11.2` and Antigravity CLI
+  `1.5.13`. Upgrading npm/Paseo overwrites the server patch; re-check with
+  `python3 scripts/slp.py doctor` / `git apply --check` after any upgrade.
+- **Operational guardrails, not an OS sandbox:** The server admission policy
+  gates all Paseo agent-creation entry points, and
+  `antigravity/hooks/slp-guard.mjs` (`PreToolUse`) hard-blocks native
+  subagents/swarms/workflows, writes under `~/shared`, and unattended
+  `git push` when `SLP_ROLE` is set. However, seats still run with
+  `--dangerously-skip-permissions` / `danger-full-access`, so these controls
+  prevent coordination drift and accidental violations rather than isolating
+  hostile code like an OS container/sandbox.
+- **300,000-token auto-compact limit:** Enforced explicitly only for
+  `codex-supervisor`; actual model context windows remain the hard ceiling.
+  Antigravity seats rely on prompt context-hygiene guidance and runtime
+  compaction behavior.
+- **`~/shared` write protection:** Enforced at runtime for Antigravity via
+  `slp-guard.mjs` (allowing append-only `supervisor_notebook.md` for
+  Supervisors). For `codex-supervisor`, read-only `~/shared` discipline remains
+  instruction-enforced unless paired with an equivalent Codex hook.
+- **Automated test scope:** The test suite in `tests/` (also run in GitHub
+  Actions CI) validates cross-file consistency, `scripts/slp.py render` and
+  `check-live`, `codex-room`/`codex-room-sync` (concurrent isolation, recursion
+  guard, stale runtime pruning), all branches of `slp-delegation-policy.js`,
+  and all rules in `slp-guard.mjs`. CI does not run live E2E LLM inference.

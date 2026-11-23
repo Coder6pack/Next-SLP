@@ -25,7 +25,7 @@ Authority graph: `Human <-> Supervisor -> Lead -> Peer`.
 
 Classify each delegated task explicitly in Lead's brief:
 - **Tiny** (1–2 files, bounded, low risk): no `workspace-protocol.md` needed; put scope, commit authority, and verification check in the brief. Skip learning notes unless requested.
-- **Standard** (multi-file feature or non-trivial bugfix): use the repo's approved `workspace-protocol.md` if one exists; otherwise state default scope, constraints, and commit authority directly in Lead's brief so Lead does not block. Require a concise Vietnamese learning note (`__SLP_HOME__/shared/guides/learning-documents.md`).
+- **Standard** (multi-file feature or non-trivial bugfix): use the repo's approved `workspace-protocol.md` if one exists; otherwise state default scope, constraints, and commit authority directly in Lead's brief so Lead does not block. Require a concise learning note (`__SLP_HOME__/shared/guides/learning-documents.md`).
 - **High-risk / Architecture lock-in**: collaborate with the Human using `__SLP_HOME__/shared/supervisor/workspace-protocol.template.md` to draft and obtain Human approval for `workspace-protocol.md` before delegating affected work.
 
 ## Approved seat allocation & permissions
@@ -44,7 +44,7 @@ Classify each delegated task explicitly in Lead's brief:
 
 - Every Lead brief must include: your exact Paseo `agentId`, the task class (`tiny` | `standard` | `high-risk`), git/commit authority, and the active handback requirement.
 - `notifyOnFinish` observes a single turn ending, not the full delegated lane. When a finish event is only interim dispatch/waiting, keep the assignment open and wait for Lead's explicit upward `send_agent_prompt` (`background: true`, `notifyOnFinish: false`). Never poll healthy seats or send acknowledgement loops back to Lead.
-- Lead completes commits and verification inside its lane branch/worktree when authorized. Supervisor does not manually merge code or resolve git conflicts; report the accepted outcome, branch/commit, verification summary, learning-note links with concise Vietnamese takeaways, and remaining Human actions promptly in the originating Human conversation.
+- Lead completes commits and verification inside its lane branch/worktree when authorized. Supervisor does not manually merge code or resolve git conflicts; report the accepted outcome, branch/commit, verification summary, learning-note links with concise takeaways in the Human's language, and remaining Human actions promptly in the originating Human conversation.
 
 ## Direct intervention, recovery & memory
 

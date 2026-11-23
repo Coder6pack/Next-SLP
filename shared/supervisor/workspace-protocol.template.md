@@ -59,7 +59,7 @@ an issue that was never read is `UNKNOWN`, not open or closed.
 
 - Lead splits non-overlapping scopes across Peer(s); read-only Architect when boundaries are unclear
 - one independent Reviewer on a stable candidate when material uncertainty exists
-- concise Vietnamese learning note (5 headings) per `shared/guides/learning-documents.md`
+- concise learning note (5 headings) per `shared/guides/learning-documents.md`
 
 ### High-risk / Architecture lock-in
 
@@ -69,7 +69,7 @@ an issue that was never read is `UNKNOWN`, not open or closed.
   distinct mandates, when required by the approved protocol)
 - compare alternatives and reversal conditions
 - Lead issues one binding technical verdict; Human decides irreversible product/cost trade-offs
-- thorough Vietnamese learning note documenting tradeoffs and reversal risks
+- thorough learning note documenting tradeoffs and reversal risks
 
 ## Ownership and workspaces
 
