@@ -118,9 +118,7 @@
             "update_schedule",
             "schedule_logs",
             "run_schedule_once",
-            "delete_schedule",
-            "create_heartbeat",
-            "delete_heartbeat"
+            "delete_schedule"
           ]
         }
       },
@@ -180,9 +178,7 @@
             "update_schedule",
             "schedule_logs",
             "run_schedule_once",
-            "delete_schedule",
-            "create_heartbeat",
-            "delete_heartbeat"
+            "delete_schedule"
           ]
         }
       },

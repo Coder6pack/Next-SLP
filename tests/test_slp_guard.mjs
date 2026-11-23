@@ -167,12 +167,59 @@ describe("slp-guard PreToolUse hook", () => {
         `expected allow shell cmd: ${safeCmd}`
       );
     }
+      assert.equal(
+        evaluatePreToolUse(
+          { cwd, toolCall: { name: "edit_file", args: { Path: "/opt/example-home/dev/app/formal/Proof.lean" } } },
+          env
+        ).decision,
+        "allow"
+      );
+  });
+
+  it("blocks Supervisor from editing product files while allowing workspace-protocol.md and artifacts", () => {
+    const env = { ...BASE_ENV, SLP_ROLE: "supervisor" };
+    const cwd = "/opt/example-home/dev/app";
+
+    for (const blockedTarget of [
+      "/opt/example-home/dev/app/src/index.ts",
+      "README.md",
+      "package.json",
+      "/opt/example-home/shared/supervisor/workspace-protocol.md",
+    ]) {
+      assert.equal(
+        evaluatePreToolUse({ cwd, toolCall: { name: "edit_file", args: { Path: blockedTarget } } }, env).decision,
+        "deny",
+        `Supervisor must be blocked from editing ${blockedTarget}`
+      );
+      assert.equal(
+        evaluatePreToolUse({ cwd, toolCall: { name: "write_file", args: { Path: blockedTarget } } }, env).decision,
+        "deny",
+        `Supervisor must be blocked from writing ${blockedTarget}`
+      );
+    }
+
+    // Empty path on file mutation is also denied for Supervisor.
     assert.equal(
-      evaluatePreToolUse(
-        { cwd, toolCall: { name: "edit_file", args: { Path: "/opt/example-home/dev/app/formal/Proof.lean" } } },
-        env
-      ).decision,
-      "allow"
+      evaluatePreToolUse({ cwd, toolCall: { name: "write_file", args: {} } }, env).decision,
+      "deny"
     );
+
+    // Allowed Supervisor writes: workspace-protocol.md (outside ~/shared) and Antigravity brain artifacts.
+    for (const allowedTarget of [
+      "workspace-protocol.md",
+      "/opt/example-home/dev/app/docs/workspace-protocol.md",
+      "/opt/example-home/.gemini/antigravity/brain/conv-123/plan.md",
+    ]) {
+      assert.equal(
+        evaluatePreToolUse({ cwd, toolCall: { name: "write_file", args: { Path: allowedTarget } } }, env).decision,
+        "allow",
+        `Supervisor should be allowed to write ${allowedTarget}`
+      );
+      assert.equal(
+        evaluatePreToolUse({ cwd, toolCall: { name: "edit_file", args: { Path: allowedTarget } } }, env).decision,
+        "allow",
+        `Supervisor should be allowed to edit ${allowedTarget}`
+      );
+    }
   });
 });

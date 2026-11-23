@@ -100,6 +100,9 @@ export function evaluatePreToolUse(payload, env = process.env) {
   const cwd = typeof payload?.cwd === "string" && payload.cwd ? payload.cwd : process.cwd();
   const sharedDir = safeRealpath(env.SLP_SHARED_DIR || join(homeDir, "shared"));
   const notebookPath = resolve(sharedDir, "supervisor", "supervisor_notebook.md");
+  const agyBrainDir = safeRealpath(
+    env.SLP_AGY_BRAIN_DIR || join(homeDir, ".gemini", "antigravity", "brain")
+  );
   const lockedEntries =
     role === "peer" || role === "lead"
       ? parseLockedEntries(env.SLP_LOCKED_FILES, cwd, homeDir)
@@ -117,10 +120,14 @@ export function evaluatePreToolUse(payload, env = process.env) {
     );
   }
 
-  // 2. Enforce ~/shared read-only boundary and SLP_LOCKED_FILES spec/test locks.
+  // 2. Enforce ~/shared read-only boundary, Supervisor governance-only writes, and SLP_LOCKED_FILES locks.
   if (FILE_MUTATION_TOOLS.has(toolName)) {
     const rawTarget = args.Path ?? args.path ?? args.TargetFile ?? args.file_path ?? "";
-    if (typeof rawTarget === "string" && rawTarget.trim()) {
+    if (typeof rawTarget !== "string" || !rawTarget.trim()) {
+      if (role === "supervisor") {
+        return deny("SLP guard (supervisor): file mutation requires an explicit target path.");
+      }
+    } else {
       const expanded = expandHome(rawTarget.trim(), homeDir);
       const resolvedTarget = safeRealpath(isAbsolute(expanded) ? expanded : resolve(cwd, expanded));
       if (isInsideDir(resolvedTarget, sharedDir)) {
@@ -135,6 +142,16 @@ export function evaluatePreToolUse(payload, env = process.env) {
         return deny(
           `SLP guard (${role}): '${resolvedTarget}' is under read-only SLP shared directory '${sharedDir}'.`
         );
+      }
+
+      if (role === "supervisor") {
+        const isWorkspaceProtocol = basename(resolvedTarget) === "workspace-protocol.md";
+        const isArtifactWrite = isInsideDir(resolvedTarget, agyBrainDir);
+        if (!isWorkspaceProtocol && !isArtifactWrite) {
+          return deny(
+            `SLP guard (supervisor): Supervisor cannot modify repository/product file '${resolvedTarget}' directly; only 'workspace-protocol.md' governance drafts and append-only 'supervisor_notebook.md' are permitted. Delegate code/doc edits to Lead.`
+          );
+        }
       }
 
       const lockedMatch = findLockedMatch(resolvedTarget, lockedEntries);

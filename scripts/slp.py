@@ -198,9 +198,23 @@ def collect_verification_errors(repo_root: Path = REPO_ROOT) -> list[str]:
         role = entry.get("env", {}).get("SLP_ROLE")
         if role not in VALID_ROLES:
             errors.append(f"Provider {pid} must declare env.SLP_ROLE in {VALID_ROLES}")
+        paseo_tools = entry.get("paseoTools", {})
+        disabled_tools = set(paseo_tools.get("disabledTools", []))
         if role == "peer":
-            if entry.get("paseoTools", {}).get("enabled") is not False:
+            if paseo_tools.get("enabled") is not False:
                 errors.append(f"Peer provider {pid} must set paseoTools.enabled = false")
+        elif role == "lead":
+            for hb_tool in ("create_heartbeat", "delete_heartbeat", "create_schedule"):
+                if hb_tool not in disabled_tools:
+                    errors.append(f"Lead provider {pid} must disable {hb_tool} in paseoTools.disabledTools")
+        elif role == "supervisor":
+            for hb_tool in ("create_heartbeat", "delete_heartbeat"):
+                if hb_tool in disabled_tools:
+                    errors.append(
+                        f"Supervisor provider {pid} must keep {hb_tool} enabled for bounded watchdog oversight"
+                    )
+            if "create_schedule" not in disabled_tools:
+                errors.append(f"Supervisor provider {pid} must keep create_schedule disabled")
         models = entry.get("models", [])
         if not models:
             errors.append(f"Provider {pid} has no models")
