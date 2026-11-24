@@ -54,7 +54,6 @@ FORBIDDEN_PEER_REFS = (
     "anti-patterns.md",
     "audit.md",
     "catalog.md",
-    "structural-antipatterns.md",
     "formal-verification.md",
 )
 

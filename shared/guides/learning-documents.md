@@ -1,62 +1,39 @@
 # Learning Documents
 
-Learning notes help the Human understand non-trivial implementation changes and
-technical tradeoffs without wading through raw diffs or transcripts.
+Learning notes capture non-obvious design decisions, tradeoffs, and root causes
+so the Human and future sessions do not reverse-engineer diffs or repeat mistakes.
 
 ## When to write one
 
 | Task class | Requirement |
 | --- | --- |
-| **Tiny** (1–2 files, low-risk fix) or **review / research-only** | **Skip.** Do not create a learning note unless the Supervisor explicitly asks. |
-| **Standard** (multi-file feature or bugfix) | **Required.** One concise note per implementation task (5 headings below). |
-| **High-risk / Architecture lock-in** | **Required.** One thorough note covering architecture tradeoffs, boundaries, and reversal risks. |
+| **Tiny**, **review / research-only**, or **straightforward `standard` fix** | **Skip** unless Supervisor explicitly requests one. Avoid boilerplate notes with no real tradeoff. |
+| **`Standard` with non-obvious tradeoffs / tricky root cause** | **Required.** One crisp note using the 5 headings below. |
+| **`High-risk` / Architecture lock-in** | **Required.** Thorough tradeoffs, boundaries, and reversal risks; also update `Active architecture decisions & invariants` in `workspace-protocol.md` when foundational choices change. |
 
-Path inside the project or worktree:
+Path: `docs/learning-notes/<YYYY-MM-DD>-<short-task-name>.md` (local completion
+date + unique slug; Lead reserves the path in the brief so parallel worktrees
+never collide).
 
-`docs/learning-notes/<YYYY-MM-DD>-<short-task-name>.md`
+## Writing rules
 
-Use the local completion date and a short unique slug. Lead assigns one writer
-and reserves the path in the brief so parallel worktrees never collide.
+- Write in the Human's language; keep code identifiers, file paths, and technical terms in English where natural.
+- Ground every claim in real files, symbols, and executed verification output. Separate verified facts from hypotheses; state `unknown` rather than guessing.
+- Compare 1–2 realistic alternatives when a real design choice existed (label retrospective comparisons explicitly).
+- Never add instrumentation/code solely to illustrate the note, never include secrets or raw transcripts, and never treat a note as replacement for real verification evidence.
 
-## Writing method
-
-- Write clearly in the Human's preferred language; keep code identifiers, file
-  paths, and technical terms in English where natural.
-- Ground every claim in concrete files, symbols, and real verification output.
-  Separate verified facts from hypotheses; if a root cause is still unknown,
-  say so instead of guessing.
-- For `standard` and `high-risk` work, briefly compare at least 1–2 realistic
-  alternatives and why they were not chosen (label retrospective comparisons
-  explicitly).
-- Do not add production code/instrumentation just to illustrate the note, and
-  never include secrets, credentials, customer data, or raw transcript dumps.
-- A learning note never replaces real acceptance evidence.
-
-## Structure
-
-Use these 5 headings in order (proportional to task complexity — keep `standard`
-notes crisp; expand tradeoffs and diagrams only for `high-risk` tasks):
+## Structure (5 headings in order)
 
 ```markdown
 # Task & What Changed
-
 # Root Problem & Why This Approach
-
 # Production Shape & Tradeoffs
-
 # Verification Evidence
-
 # Key Takeaways & Pitfalls
 ```
 
-## Role responsibilities
+## Ownership
 
-- **Peer:** Write the note only when Lead's brief requests it and reserves a
-  path. Include the exact path in your handback message.
-- **Lead:** Reserve the path in `standard` / `high-risk` implementation briefs,
-  verify the note matches the accepted state, and include its path in the
-  handback to Supervisor. Write a note for your own distinct integration work
-  without duplicating a Peer's note.
-- **Supervisor:** Link accepted notes in the completion report to the Human and
-  highlight 2–3 concrete takeaways in the Human's language. Keep project
-  learning notes separate from `__SLP_HOME__/shared/supervisor/supervisor_notebook.md`.
+- **Peer:** Write only when Lead's brief requests it and reserves a path; return the exact path in handback.
+- **Lead:** Reserve the path when warranted, verify the note matches accepted code, and include it in upward handback.
+- **Supervisor:** Link accepted notes in the Human report with 2–3 concrete takeaways; keep separate from `__SLP_HOME__/shared/supervisor/supervisor_notebook.md`.

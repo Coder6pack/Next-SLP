@@ -1,173 +1,60 @@
 # Workspace Protocol (template)
 
-> The Human/project owner owns the workspace protocol. The Human and Supervisor
-> develop it together; Supervisor may interview the Human and drafts
-> `workspace-protocol.md` in the workspace location authorized by the Human.
-> Obtain Human approval before handing it to Lead. Lead reads the approved
-> protocol in full before orchestrating and excerpts relevant constraints into
-> Peer briefs. Peer may read relevant approved sections when needed or assigned,
-> but does not acquire governance or orchestration authority.
->
-> This is a drafting scaffold, not an active protocol. Discuss and customize
-> its proposed rules with the Human; unresolved decisions remain explicit.
-> Do not silently activate example staffing, access modes, tools, or thresholds.
+> Human owns this protocol; Supervisor drafts it with the Human and obtains
+> approval before delegating affected work. Lead reads the approved protocol in
+> full before orchestrating and excerpts relevant constraints into Peer briefs.
+> Do **not** repeat global SLP rules already defined in role prompts or
+> `paseo/providers.json` — keep this file 100% project-specific and concise.
 
 ## Status
 
-- owner: <Human/project owner>
-- drafter: <Supervisor working with the Human>
+- owner: <Human / project owner>
 - status: <draft | approved>
-- approval_record: <existing agreed record of Human approval; unset while draft>
+- approval_record: <reference to Human approval; unset while draft>
 - version: 1
 - last_reviewed: YYYY-MM-DD
 - applies_to: <repository root>
-- readers: Human and Supervisor; Lead in full before orchestration; Peer as relevant to its brief
 
-## Project characteristics
+## Project profile & dominant risks
 
-- criticality:
-- dominant risks:
-- expensive-to-reverse decisions:
-- external side effects:
+- criticality: <low | medium | high>
+- dominant failure modes: <e.g., data corruption, cross-tenant leak, billing drift>
+- expensive-to-reverse boundaries: <wire formats, DB migrations, auth, public APIs>
+- forbidden external side effects: <pushes, deploys, production writes, spending>
 
-## Authority
+## Active architecture decisions & invariants
 
-- Lead may decide:
-- Human must decide:
-- prohibited without explicit authority:
+Living index of non-obvious decisions still in force so future Leads do not
+re-litigate or break them. Prune or mark superseded whenever a foundation
+changes (keep details in `docs/learning-notes/`).
 
-## Issue tracker
+- `[YYYY-MM-DD]` <Decision> — <why, and what breaks if reversed>
 
-Optional. Name the tracker this repository uses, or write `none`.
+## Authority boundaries
 
-- tracker: <GitHub Issues | none>
-- who may create or close issues:
+- Lead may decide: <scoped implementation, internal refactors, lane commits>
+- Human must decide: <breaking API/schema changes, new dependencies, cost/security tradeoffs>
+- Prohibited without explicit Human authorization: <push, release, delete data, external spend>
 
-With `none`, the Lead's brief is the only record of scope, and the closing
-report is the only record of outcome. Never let a seat invent tracker state:
-an issue that was never read is `UNKNOWN`, not open or closed.
+## Verification & contract locks
 
-## Task classes
+- standard verification: `<exact test / lint / typecheck commands>`
+- high-risk verification: `<integration / fuzz / cross-model review triggers>`
+- `SLP_LOCKED_FILES` (optional): `<comma-separated contract test or Spec.lean paths Peers must not edit>`
+- formal verification (optional, `high-risk` cores only): `<none | lean4>` — when `lean4`, follow `__SLP_HOME__/shared/lead/formal-verification.md`
 
-### Tiny (1–2 files, bounded, low risk)
+## Brief & repo discipline
 
-- no separate protocol ceremony required; constraints live in the brief
-- one Peer implementer; targeted verification; Lead verifies directly on handback
-- independent Reviewer optional; learning note skipped unless requested
+- Writable Peers exercise judgment inside scope; do not pause to offer menus of options — escalate only genuine cross-boundary blockers as a single concrete question.
+- Review briefs provide the frozen candidate, governing constraints, and an open question without revealing Lead's preferred answer.
+- Issue tracker: `<GitHub Issues | Linear | none>` — who may create/close issues. Never invent unread tracker state (unread = `UNKNOWN`).
+- Plans: keep only active plans; delete completed plan files after merge/push.
 
-### Standard (cross-module / feature / non-trivial bugfix)
+## Project-specific anti-patterns (optional)
 
-- Lead splits non-overlapping scopes across Peer(s); read-only Architect when boundaries are unclear
-- one independent Reviewer on a stable candidate when material uncertainty exists
-- concise learning note (5 headings) per `shared/guides/learning-documents.md`
-
-### High-risk / Architecture lock-in
-
-- Human-approved `workspace-protocol.md` required before delegating affected work
-- sealed Architect and Reviewer mandates ("dual design / dual review":
-  two independent seats across approved models, one frozen candidate,
-  distinct mandates, when required by the approved protocol)
-- compare alternatives and reversal conditions
-- Lead issues one binding technical verdict; Human decides irreversible product/cost trade-offs
-- thorough learning note documenting tradeoffs and reversal risks
-
-## Ownership and workspaces
-
-- one writer per moving scope
-- concurrent writers require separate worktrees
-- no overlapping ownership
-- review only a stable candidate
-- define handback and integration owner
-
-## Routing
-
-- pin the per-role routing for THIS repo (provider / model / effort /
-  access mode), e.g. "Lead: <...>; implementation and
-  review-remediation owners: <...> in full-access; review seats:
-  <...>" — the Lead must not re-derive routing per task
-- inspect currently available providers/models
-- bounded familiar work: an approved model/effort pair appropriate to the task
-- lifecycle/ownership work: strong reasoning model
-- monitoring: economical model when risk permits
-
-## Brief discipline
-
-- every writable-owner brief must explicitly forbid stopping to offer
-  the Lead a menu of implementation options; the owner exercises its
-  own judgment inside its scope. A genuinely cross-boundary decision
-  is a single short, concrete yes/no approval question — never an
-  option-selection ritual
-- council and review briefs are short and sufficient, never reveal or
-  hint at the Lead's preferred answer, and never pre-solve; for
-  reviews, do not narrow the review dimensions or otherwise anchor the
-  seats — give the stable artifact, governing constraints, and the
-  open question
-
-## Context budget
-
-- after a long-context owner hands back, if its context consumption
-  exceeds ~45% of the model window, compact that owner before further
-  work or start a fresh owner when clean context is the safer
-  continuation; preserve ownership truth and durable handback
-  artifacts across either transition — never silently continue a
-  context-heavy owner
-
-## Ultra-review gate
-
-- ultra-review runs outside the room (human session), never as a seat
-- do not run it after every slice or remediation; default is one run
-  at plan closure
-- mid-plan runs only at a stable checkpoint that completes an
-  end-to-end capability, freezes a dependency foundation, or crosses a
-  hard-to-reverse wire/storage/migration/ownership/security boundary
-- never on unfinished composition, pending validation, or known later
-  work
-- after findings: focused Peer follow-up through the Lead; re-run only
-  for a materially new convergence claim
-- brief active peers only at handback, never by interrupting them
-
-## Escalation
-
-- CHALLENGE: a recorded choice or premise fails on evidence
-- DECISION_REQUEST: another owner/API/scope or a decision outside the
-  assignee's authority is required
-- BLOCKED: authority, prerequisite, external state, or user decision missing
-
-## Verification
-
-- exact checks by task class
-- candidate identity requirements
-- independent-review triggers
-- subjective evidence requirements
-- locked contract/spec files (`SLP_LOCKED_FILES`, optional): paths Peers must not modify during implementation (e.g. `tests/contract.test.ts`, `formal/Spec.lean`)
-- formal verification (optional, `high-risk` cores only): `<none | lean4>` — when `lean4`, follow `shared/lead/formal-verification.md` (locked `Spec.lean`, `lake build`, zero `sorry`, `#print axioms` audit, and differential test against production code)
-
-## Project-specific anti-patterns
-
-- signal:
-- evidence required:
-- open question:
-- allowed response:
-
-## Documentation discipline
-
-- record only non-obvious decisions — never what the code already
-  shows (example of a worthy entry: "sessions live in Redis, not
-  MySQL, because X" — so a later reviewer doesn't suggest migrating
-  them back)
-- keep only active plans; delete completed plans after commit+push
-  (leftover plans pollute later agents' searches)
-- tiny tasks skip the plan step entirely
-- the protocol may pin the exact tool + params the Lead uses to create
-  agents here, so the Lead doesn't re-derive it per task
+- signal / required evidence / allowed response: <leave blank if none yet>
 
 ## Protocol evolution
 
-- Human and Supervisor discuss changes; Supervisor drafts governance updates
-- Lead and Peer raise conflicts and proposals through their assigned owner
-- Supervisor appends operational failures, causal evidence, and lessons to
-  `__SLP_HOME__/shared/supervisor/supervisor_notebook.md`; keep project decisions and task
-  state in the workspace's existing designated records
-- Human approves material authority changes
-- preserve version history
-- review after a repeated pattern or major architecture change
+- Human approves material authority or invariant changes (bump `version` and `last_reviewed`).
+- Operational failures and cross-workspace lessons belong in `__SLP_HOME__/shared/supervisor/supervisor_notebook.md`, not here.

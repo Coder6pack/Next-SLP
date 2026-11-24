@@ -1,103 +1,66 @@
-# Handoff — moving state and authority to a successor owner or context
+# Handoff — state and authority transitions
 
-> Read by the Lead (owner transitions inside its lane) and by the Supervisor
-> (Lead replacement under a Human mandate). Peers do not read this file; a Peer
-> returns its handback directly in its final message unless Lead explicitly
-> requests a file path.
-> Agents produce the packet themselves — there is no skill for it.
-
-## Vocabulary
-
-- **Handback** — a Peer returns its lease to the Lead with evidence in its final
-  message. Upward. Ends an assignment.
-- **Handoff** — structured transfer of state *and* authority to a new
-  owner or a fresh context. Sideways, to a successor. The authority to
-  replace a Lead comes from the Human; the packet goes to the successor.
+> Read by Lead (Peer transitions) and Supervisor (Human-mandated Lead
+> replacement). Peers do not read this file; Peers return handbacks directly in
+> their final message unless Lead requests a file.
 
 ## Compact, branch, or hand off?
 
-| Situation | Action | Who |
-|---|---|---|
-| Context heavy, same owner, same objective, mental model still linear | **compact** | the owner itself |
-| A large new dependency appears mid-line (e.g. authorization work discovers there is no authentication) | **do not cram it in** — a separate owner (Peer, or a second Lead for a real project branch) takes the branch, hands back, the main Lead continues | Lead |
-| Owner changes; role/disposition changes; context is full of false starts; a new provider/model needs a clean room | **handoff** with a packet | Lead (for Peers), Supervisor (for a Lead) |
-| Lead cannot recover | **Lead replacement** — human mandate, break-before-make, receipt | Human decides, Supervisor executes |
+| Situation | Action | Owner |
+| --- | --- | --- |
+| Context heavy (~45%+), same owner/goal, linear mental model | **Compact** | Current owner |
+| Large unexpected dependency mid-lane | **Branch** to a separate Peer/Lead; merge back on handback | Lead / Supervisor |
+| Owner/model changes, polluted context, or independent fresh review | **Handoff** with structured packet | Lead (Peer) / Supervisor (Lead) |
+| Lead unrecoverable | **Lead replacement** (Human mandate + break-before-make) | Human decides, Supervisor executes |
 
-"Context is full" alone is not a handoff trigger. Fresh session for
-independence, compact for continuity. A fork is not a clean room.
+Fresh session for independence, compact for continuity; a fork is not a clean room.
 
-## The packet
+## Handoff packet
 
-The packet is the successor's first prompt (so it lives in the session
-log, like every other ruling). Never "read the old transcript and
-continue": that moves the sorting cost and the old framing noise onto
-the successor. Separate stable decisions from live facts the successor
-must re-read (provider IDs, daemon state, active owners) and stamp
-live facts with `verified_at`.
+Pass the packet as the successor's first prompt — never say "read the old
+transcript and continue". Stamp volatile runtime facts (agent IDs, branches,
+daemon state) with `verified_at`.
 
 ```text
 HANDOFF
 From / To:
-Authority transferred:
-Authority explicitly retained:
-Objective and current state:
-Stable decisions (and who closed them):
-Candidate / artifacts (exact identity):
-Active agents / scripts / writers (verified_at):
-Checks and exact results:
-Open questions / blockers:
-Known failed approaches and their mechanism (do not repeat):
-Next permitted action:
-Stop / escalation conditions:
+Authority transferred / retained:
+Objective & current state:
+Closed decisions (and owner):
+Candidate / exact artifact identity:
+Active agents / worktrees (verified_at):
+Checks & real results:
+Known failed approaches (do not repeat):
+Open blockers & next permitted action:
 ```
 
-A Peer-to-Peer handoff may collapse to: objective and current state,
-stable facts, decisions and owner, candidate, verification performed,
-open questions and risks, exact next authority, do-not-repeat. Owned
-scope, authority, and do-not-repeat are never implicit.
+## Break-before-make (zero split-brain)
 
-## Break-before-make
+Never run two writers on the same moving scope "for safety". Execute Lead
+replacement strictly in order:
 
-Replacing the owner of a moving scope: checkpoint and revoke the old
-owner **before** activating the new one. Two leases on one scope "for
-a few minutes, to be safe" is split-brain.
+1. Freeze new delegation.
+2. Checkpoint the old Lead if it can still respond.
+3. Revoke/archive the old seat (prove revocation before continuing).
+4. Spawn the successor Lead with the handoff packet.
+5. Reconcile surviving Peers/worktrees/artifacts.
+6. Re-enable writes.
 
-Lead replacement, in order:
-
-1. freeze new delegation;
-2. take a checkpoint from the old Lead if it can still answer;
-3. revoke the old binding (archive the seat);
-4. create the new Lead with the packet and the unresolved state;
-5. reconcile the agents and artifacts that still exist;
-6. only then re-enable writes.
-
-If you cannot prove the old binding is revoked, do not activate a new
-writer on the same scope.
+Log one durable receipt in `__SLP_HOME__/shared/supervisor/supervisor_notebook.md`
+(or the workspace's designated tracker with a notebook cross-reference):
 
 ```text
 LEAD REPLACEMENT RECEIPT
-Human recovery mandate:
-Old Lead binding revoked at:
-Old Lead checkpoint:
-Unresolved work / agents:
-New Lead binding activated at:
-Reconciliation result:
+Human mandate:
+Old Lead revoked at / checkpoint:
+Unresolved agents / state:
+New Lead activated at / reconciliation:
 Writes re-enabled at:
 ```
 
-The receipt is the one durable operational record: the Supervisor appends it to
-`__SLP_HOME__/shared/supervisor/supervisor_notebook.md`, or to the project's issue tracker
-when the workspace protocol designates that tracker. In the latter case, append
-the operational lesson and a receipt reference to the shared notebook rather
-than duplicating tracker state. Do not create a separate per-workspace notebook.
-Everything else stays in session logs.
-
 ## Smells
 
-- Handoff as long as a transcript → the stable state was never
-  structured into an artifact.
-- A successor re-deciding something the packet lists as closed → the
-  packet did not say who closed it.
-- A successor retrying a known dead end → do-not-repeat was empty.
-- Two seats reporting `working` on one scope after a transition →
-  break-before-make was skipped.
+- Packet as long as a transcript → stable state was never distilled.
+- Successor re-deciding closed choices → packet omitted who closed them.
+- Successor retrying dead ends → `Known failed approaches` was empty.
+- Two seats `working` on one scope → break-before-make was skipped.
