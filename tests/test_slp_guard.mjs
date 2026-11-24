@@ -14,14 +14,44 @@ describe("slp-guard PreToolUse hook", () => {
     assert.equal(res.decision, "allow");
   });
 
-  it("blocks native subagent, swarm, and workflow tools for Peer and Lead", () => {
+  it("blocks native orchestration bypasses for Peer and Lead while permitting research/browser subagents", () => {
     for (const role of ["peer", "lead"]) {
-      for (const tool of ["invoke_subagent", "define_subagent", "swarm", "run_workflow"]) {
+      for (const tool of ["define_subagent", "swarm", "run_workflow"]) {
         const res = evaluatePreToolUse(
           { toolCall: { name: tool, args: {} } },
           { ...BASE_ENV, SLP_ROLE: role }
         );
         assert.equal(res.decision, "deny", `${role} must be blocked from ${tool}`);
+      }
+
+      // invoke_subagent with self, custom, or missing TypeName stays blocked.
+      for (const blockedArgs of [{}, { TypeName: "self" }, { TypeName: "custom-coder" }, { TypeName: "" }]) {
+        const res = evaluatePreToolUse(
+          { toolCall: { name: "invoke_subagent", args: blockedArgs } },
+          { ...BASE_ENV, SLP_ROLE: role }
+        );
+        assert.equal(
+          res.decision,
+          "deny",
+          `${role} must be blocked from invoke_subagent(${JSON.stringify(blockedArgs)})`
+        );
+      }
+
+      // Built-in read-only research and UI browser subagents are allowed.
+      for (const allowedArgs of [
+        { TypeName: "research" },
+        { TypeName: "browser" },
+        { type_name: "Research" },
+      ]) {
+        const res = evaluatePreToolUse(
+          { toolCall: { name: "invoke_subagent", args: allowedArgs } },
+          { ...BASE_ENV, SLP_ROLE: role }
+        );
+        assert.equal(
+          res.decision,
+          "allow",
+          `${role} should be allowed invoke_subagent(${JSON.stringify(allowedArgs)})`
+        );
       }
     }
   });

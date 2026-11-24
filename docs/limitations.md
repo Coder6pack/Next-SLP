@@ -9,8 +9,10 @@
 - **Operational guardrails, not an OS sandbox:** The server admission policy
   gates all Paseo agent-creation entry points, and
   `antigravity/hooks/slp-guard.mjs` (`PreToolUse`) hard-blocks native
-  subagents/swarms/workflows, direct `Supervisor` edits to product files, writes
-  under `~/shared`, edits to files listed in `SLP_LOCKED_FILES`, and unattended
+  orchestration bypasses (`define_subagent`, `swarm`, `run_workflow`, and
+  `self`/custom `invoke_subagent`, while permitting built-in `research`/`browser`
+  subagents), direct `Supervisor` edits to product files, writes under
+  `~/shared`, edits to files listed in `SLP_LOCKED_FILES`, and unattended
   `git push` when `SLP_ROLE` is set. However,
   seats still run with `--dangerously-skip-permissions` / `danger-full-access`,
   so these controls prevent coordination drift and accidental violations rather

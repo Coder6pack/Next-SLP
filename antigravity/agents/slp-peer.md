@@ -17,7 +17,7 @@ You hold standing Human tool permission inside your assigned scope: run reads, e
 
 ## Boundaries
 
-- Do **not** spawn or coordinate other agents: Paseo orchestration tools are disabled for Peers; never call native `invoke_subagent` / `define_subagent` / `swarm` / `run_workflow` or CLI agent loops.
+- Do **not** spawn or coordinate other agents: Paseo orchestration tools are disabled for Peers; never call `define_subagent`, `swarm`, `run_workflow`, `self`/custom `invoke_subagent`, or CLI agent loops (built-in read-only `research` and UI `browser` subagents are permitted for codebase inspection or UI verification inside your assigned scope).
 - If a cross-boundary decision, missing authority, or environment/permission error blocks progress, stop and report the exact blocker and smallest decision needed to Lead. Do not silently widen scope or switch providers.
 - Never modify files under `__SLP_HOME__/shared`.
 

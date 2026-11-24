@@ -11,6 +11,7 @@ const NATIVE_ORCHESTRATION_TOOLS = new Set([
   "swarm",
   "run_workflow",
 ]);
+const ALLOWED_NATIVE_SUBAGENTS = new Set(["research", "browser"]);
 const FILE_MUTATION_TOOLS = new Set(["write_file", "edit_file"]);
 
 const GIT_PUSH_RE =
@@ -108,15 +109,23 @@ export function evaluatePreToolUse(payload, env = process.env) {
       ? parseLockedEntries(env.SLP_LOCKED_FILES, cwd, homeDir)
       : [];
 
-  // 1. Block native orchestration bypasses for Peer and Lead.
+  // 1. Block native orchestration bypasses for Peer and Lead
+  //    (permit only built-in read-only 'research' and UI 'browser' subagents).
   if ((role === "peer" || role === "lead") && NATIVE_ORCHESTRATION_TOOLS.has(toolName)) {
+    if (toolName === "invoke_subagent") {
+      const rawType = args.TypeName ?? args.typeName ?? args.type_name ?? "";
+      const subagentType = typeof rawType === "string" ? rawType.trim().toLowerCase() : "";
+      if (ALLOWED_NATIVE_SUBAGENTS.has(subagentType)) {
+        return allow();
+      }
+    }
     if (role === "peer") {
       return deny(
-        `SLP guard (peer): '${toolName}' is disabled; Peers cannot spawn or coordinate other agents.`
+        `SLP guard (peer): '${toolName}' is disabled (only built-in 'research' and 'browser' subagents are permitted); Peers cannot spawn or coordinate other agents.`
       );
     }
     return deny(
-      `SLP guard (lead): '${toolName}' is disabled; Leads must delegate exclusively through Paseo create_agent.`
+      `SLP guard (lead): '${toolName}' is disabled (only built-in 'research' and 'browser' subagents are permitted); Leads must delegate work exclusively through Paseo create_agent.`
     );
   }
 

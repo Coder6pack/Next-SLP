@@ -92,4 +92,4 @@ git apply --check /absolute/path/to/next-slp/patches/paseo-slp-admission.patch
 - Verify delegation boundaries: `agy-lead` → `agy-peer` succeeds for approved
   pairs, rejects out-of-menu models/efforts, rejects `detached` Peers, rejects
   non-SLP agents spawning SLP roles, and `agy-peer` has zero Paseo tools plus
-  `slp-guard` blocking native `invoke_subagent`.
+  `slp-guard` blocking `self`/custom `invoke_subagent`, `swarm`, and `run_workflow`.
