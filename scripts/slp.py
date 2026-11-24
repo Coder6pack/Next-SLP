@@ -49,12 +49,12 @@ AGENT_FRONTMATTER = {
 }
 
 FORBIDDEN_PEER_REFS = (
-    "shared/README.md",
     "handoff.md",
     "anti-patterns.md",
     "audit.md",
-    "catalog.md",
     "formal-verification.md",
+    "supervisor_notebook.md",
+    "workspace-protocol.template.md",
 )
 
 PROVIDER_MODEL_REF_RE = re.compile(

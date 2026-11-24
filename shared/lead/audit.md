@@ -1,33 +1,17 @@
----
-name: test-proof-debt-audit
-description: Audit one named behavioral claim and the test, validator, benchmark, or gate cited as proof. Do not use for ordinary implementation, failing tests, weak coverage, or the presence of mocks.
----
-
 # Test Proof Debt Audit
 
-Audit only the claim and proof route named by the user. Do not turn ordinary
-implementation, a failing test, weak coverage, or the presence of mocks into a
-repository-wide proof audit.
+Audit only the named behavioral claim and its cited proof. Do not turn ordinary
+implementation, failing tests, or normal mock boundaries into a repo-wide audit.
 
-1. Name the claim and production behavior that makes it true.
-2. Identify the cited proof.
-3. State what the proof actually observes: behavior, machine-readable contract, performance, or proxy text/metadata.
-4. Apply deletion sensitivity: would it still pass if the claimed behavior disappeared?
-5. Check whether expected values come from independent truth.
-6. Choose `keep`, `replace`, `demote`, `closeout-only`, `delete`, or `escalate`.
+1. Name the claimed production behavior.
+2. Identify the cited proof (test, validator, benchmark, or gate).
+3. State what the proof actually observes: executed behavior, machine-readable contract, or proxy text/metadata.
+4. Apply deletion sensitivity: would the check still pass if the claimed production behavior disappeared?
+5. Verify expected values come from independent truth (not copied from the same output/algorithm).
+6. Choose: `keep`, `replace`, `demote`, `closeout-only`, `delete`, or `escalate`.
 
-Treat history-only expected values as proof debt. A current test must not name
-or pin a retired width, tag, field, version, byte sequence, or identifier merely
-to prove its rejection. Ask whether the test could be derived from the current
-contract without repository history. Replace it with current-boundary cases,
-demote it to closeout-only evidence, or delete it unless the historical value
-is itself a current public machine/security contract.
+## Hard rules
 
-Proxy evidence can support lint or closeout but cannot prove runtime behavior. Mocks and replicas prove only their own boundary unless the claim is explicitly about that boundary.
-
-Report location, claimed behavior, actual observation, disconfirming scenario, and
-smallest replacement. Weak proof does not authorize an architecture redesign. If
-the user requested assessment only, report and stop; modify proof or production code
-only when requested.
-
-Read [catalog.md](catalog.md) only for a broad user-requested audit or when concrete replacement examples are needed.
+- **No history-only proof debt:** A current test must not pin retired tags, versions, widths, or forbidden strings merely to prove their absence; test current contract boundaries instead.
+- **No proxy laundering:** Source scans, prose checks, fixture existence, or mocks prove only their own boundary — never runtime production behavior.
+- **Report concisely:** Location, claimed behavior, actual observation, disconfirming scenario, and smallest replacement. Weak proof does not justify an architecture redesign.

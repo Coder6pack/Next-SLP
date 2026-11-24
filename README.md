@@ -32,7 +32,7 @@ antigravity/agents/              Generated from prompts/*.md with agent frontmat
 antigravity/hooks/               PreToolUse guard (slp-guard.mjs) blocking native subagents, ~/shared writes, git push
 antigravity/hooks.json           Hook fragment for ~/.gemini/config/hooks.json
 antigravity/mcp_config.json      MCP fragment (paseo-projects) for ~/.gemini/config/mcp_config.json
-shared/                          Audience-scoped on-demand reference library (supervisor/lead/guides)
+shared/                          Minimal on-demand reference library (supervisor/lead)
 patches/                         Admission policy (slp-delegation-policy.js) + Paseo 0.11.2 server patch
 scripts/slp.py                   CLI: build, verify, render, doctor, check-live, prune
 tests/                           Unit tests for consistency, admission policy, slp-guard, codex-room-sync
@@ -63,7 +63,7 @@ python3 scripts/slp.py prune --days 14 --dry-run
 
 ## Key Design Points
 
-- **Task-size routing:** `tiny` (1–2 files, no `workspace-protocol.md` or learning note), `standard` (use existing approved protocol or defaults in the brief + concise 5-section learning note), `high-risk` (requires Human-approved `workspace-protocol.md` before delegating).
+- **Task-size routing:** `tiny` (1–2 files, no `workspace-protocol.md`), `standard` (use existing approved protocol or defaults in the brief), `high-risk` (requires Human-approved `workspace-protocol.md` before delegating). Local lane commits are authorized by default once verified; external mutations still require Human approval.
 - **Zero Paseo Tools & No Protocol Leak for Peers:** `agy-peer` sets `paseoTools.enabled = false` (removing all Paseo orchestration tools at the server layer to cut prompt schema overhead and block `send_agent_prompt` / `kill_agent` / `create_agent`), and the Peer prompt never links to Lead/Supervisor coordination docs.
 - **Two-layer enforcement (Paseo Server + Antigravity `PreToolUse` Hook):**
   - Admission gate derives roles dynamically from `env.SLP_ROLE` in `config.json`: blocks `Peer` from creating agents, blocks non-SLP agents from spawning SLP roles, restricts `Lead` to non-detached `Peer` providers in menu, and restricts `Supervisor` to approved `Lead`/`Supervisor` pairs.
