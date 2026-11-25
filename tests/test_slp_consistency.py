@@ -34,14 +34,41 @@ class SlpConsistencyTests(unittest.TestCase):
 
     def test_supervisor_heartbeat_oversight_policy_is_enforced(self):
         providers = slp.load_providers(REPO_ROOT)["agents"]["providers"]
+        expected_sup_disabled = {
+            "rename_workspace",
+            "archive_workspace",
+            "get_agent_status",
+            "cancel_agent",
+            "kill_agent",
+            "update_agent",
+            "set_agent_mode",
+            "list_pending_permissions",
+            "respond_to_permission",
+            "list_providers",
+            "inspect_provider",
+            "list_models",
+            "list_profiles",
+            "create_schedule",
+        }
         for sup_id in ("codex-supervisor", "agy-supervisor"):
             disabled = set(providers[sup_id]["paseoTools"]["disabledTools"])
             self.assertNotIn("create_heartbeat", disabled)
             self.assertNotIn("delete_heartbeat", disabled)
-            self.assertIn("create_schedule", disabled)
+            self.assertTrue(expected_sup_disabled.issubset(disabled))
         lead_disabled = set(providers["agy-lead"]["paseoTools"]["disabledTools"])
         self.assertIn("create_heartbeat", lead_disabled)
         self.assertIn("delete_heartbeat", lead_disabled)
+        self.assertNotIn("cancel_agent", lead_disabled)
+        self.assertTrue(
+            {
+                "get_agent_status",
+                "kill_agent",
+                "update_agent",
+                "set_agent_mode",
+                "list_pending_permissions",
+                "respond_to_permission",
+            }.issubset(lead_disabled)
+        )
 
     def test_render_bundle_resolves_all_placeholders_and_includes_hooks_and_mcp(self):
         with tempfile.TemporaryDirectory() as tmp:
